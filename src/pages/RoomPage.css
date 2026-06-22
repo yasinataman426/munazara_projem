@@ -1,0 +1,432 @@
+/* RoomPage 100vh No-Scroll Premium CSS */
+.room-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+  box-sizing: border-box;
+  padding: 12px;
+  position: relative;
+  gap: 12px;
+}
+
+/* 1. Header (Top Area) */
+.room-header-compact {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  flex-shrink: 0;
+}
+
+.room-title-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.room-title-text {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.room-motion-compact {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin: 0;
+  max-width: 500px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 2. Hero Center Area (Timer/Countdown) */
+.hero-center-section {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  border-radius: var(--border-radius-lg);
+  background: radial-gradient(circle at center, rgba(59, 130, 246, 0.04) 0%, transparent 70%);
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+/* Devasa (massive) countdown timer */
+.hero-timer-display {
+  font-size: 8rem;
+  font-weight: 900;
+  font-family: 'Outfit', monospace;
+  letter-spacing: -0.05em;
+  line-height: 0.9;
+  user-select: none;
+  transition: color 0.5s ease, text-shadow 0.5s ease;
+}
+
+@media (max-width: 768px) {
+  .hero-timer-display {
+    font-size: 5rem;
+  }
+}
+
+.hero-timer-glow-active {
+  text-shadow: 0 0 50px rgba(59, 130, 246, 0.35);
+  color: var(--color-primary);
+}
+
+.hero-timer-glow-protected {
+  text-shadow: 0 0 50px rgba(245, 158, 11, 0.3);
+  color: var(--color-warning);
+}
+
+.hero-timer-glow-overtime {
+  text-shadow: 0 0 50px rgba(239, 68, 68, 0.45);
+  color: var(--color-danger);
+}
+
+.hero-timer-glow-idle {
+  color: var(--text-secondary);
+  text-shadow: 0 0 30px rgba(255, 255, 255, 0.05);
+}
+
+.hero-speaker-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 4px 12px;
+  border-radius: 20px;
+  margin-top: 8px;
+}
+
+.hero-speaker-username {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 6px 0 2px 0;
+  color: var(--text-primary);
+}
+
+.hero-speaker-role {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* Compact Progress line below timer */
+.hero-progress-line-outer {
+  width: 100%;
+  max-width: 440px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 2px;
+  margin-top: 14px;
+  overflow: hidden;
+}
+
+.hero-progress-line-inner {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 1s linear, background-color 0.4s ease;
+}
+
+/* Control Row below timer progress */
+.hero-controls-row {
+  margin-top: 18px;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Audio wave animation compact */
+.hero-audio-waves {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 18px;
+  margin-left: 8px;
+}
+
+.hero-wave-bar {
+  width: 3px;
+  background: var(--color-primary);
+  border-radius: 1px;
+  animation: soundwave 1.2s ease-in-out infinite alternate;
+}
+
+.hero-wave-bar:nth-child(2) { height: 30%; animation-delay: 0.1s; }
+.hero-wave-bar:nth-child(3) { height: 75%; animation-delay: 0.25s; }
+.hero-wave-bar:nth-child(4) { height: 100%; animation-delay: 0.05s; }
+.hero-wave-bar:nth-child(5) { height: 45%; animation-delay: 0.35s; }
+
+/* 3. Benches Area (Bottom Part) - Slim rectangles in 2x2 grid */
+.bottom-benches-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 576px) {
+  .bottom-benches-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.slim-bench-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.015);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  box-sizing: border-box;
+}
+
+.slim-bench-team-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 90px;
+}
+
+.slim-bench-team-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.slim-bench-team-code {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.slim-bench-seats {
+  display: flex;
+  gap: 8px;
+  flex-grow: 1;
+  justify-content: flex-end;
+}
+
+.slim-seat-box {
+  flex: 1;
+  max-width: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 10px;
+  min-height: 38px;
+  background: rgba(255, 255, 255, 0.01);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--border-radius-sm);
+  transition: all var(--transition-normal);
+  box-sizing: border-box;
+}
+
+.slim-seat-box.occupied {
+  border-style: solid;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.slim-seat-box.occupied.gov-side { border-color: rgba(59, 130, 246, 0.25); }
+.slim-seat-box.occupied.opp-side { border-color: rgba(147, 51, 234, 0.25); }
+
+.slim-seat-meta {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.slim-seat-role {
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.slim-seat-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 85px;
+}
+
+/* 4. Floating Glassmorphic Panels */
+/* Container for top-right and bottom-right widgets */
+.floating-widget-toggle {
+  position: absolute;
+  z-index: 99;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.floating-widget-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-normal);
+  backdrop-filter: blur(8px);
+}
+
+.floating-widget-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  transform: scale(1.05);
+}
+
+.floating-widget-btn.active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: white;
+}
+
+/* Panel positioning card overlay */
+.floating-overlay-card {
+  position: absolute;
+  background: rgba(15, 17, 26, 0.92);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  padding: 16px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: modalSlideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Specific floating positions */
+.widget-top-right {
+  top: 72px;
+  right: 12px;
+}
+
+.card-top-right {
+  top: 120px;
+  right: 12px;
+  width: 260px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.widget-bottom-right {
+  bottom: 12px;
+  right: 12px;
+}
+
+.card-bottom-right {
+  bottom: 60px;
+  right: 12px;
+  width: 300px;
+}
+
+.widget-bottom-left {
+  bottom: 12px;
+  left: 12px;
+}
+
+.card-bottom-left {
+  bottom: 60px;
+  left: 12px;
+  width: 320px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* Spectator Poll & Results styles */
+.vote-results-bar-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.vote-progress-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.vote-progress-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.vote-progress-track {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.vote-progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+
+.vote-fill-ha { background: var(--color-primary); }
+.vote-fill-ma { background: var(--color-secondary); }
+.vote-fill-hk { background: #06b6d4; }
+.vote-fill-mk { background: #ec4899; }
+
+.vote-options-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.vote-option-btn {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  border-radius: var(--border-radius-sm);
+  padding: 6px 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: center;
+}
+
+.vote-option-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.vote-option-btn.selected {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: white;
+}
