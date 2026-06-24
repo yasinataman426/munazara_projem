@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Database } from '../database/database';
-import type { RoomState, SpeakerRole, DebateResult } from '../types';
+import { Database, mapToRoomState } from '../database/database';
+import { supabase } from '../database/supabaseClient';
+import type { RoomState, SpeakerRole } from '../types';
 import { 
   X, 
   Play, 
@@ -10,13 +11,13 @@ import {
   Mic, 
   MicOff, 
   Award, 
-  AlertTriangle,
   User as UserIcon,
   HelpCircle,
   TrendingUp,
   FileText,
   ChevronRight
 } from 'lucide-react';
+import { JuryPanel } from './JuryPanel';
 import './RoomPage.css';
 
 interface RoomPageProps {
@@ -42,29 +43,14 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
   const [room, setRoom] = useState<RoomState | null>(null);
   const [localElapsed, setLocalElapsed] = useState(0);
   const [localPrepRemaining, setLocalPrepRemaining] = useState(900); // 15 mins prep
-  const [showScoringModal, setShowScoringModal] = useState(false);
   const [showPollWidget, setShowPollWidget] = useState(false);
   const [showParticipantsWidget, setShowParticipantsWidget] = useState(false);
   const [showJuryNotepadWidget, setShowJuryNotepadWidget] = useState(false);
 
-  // Jury scoring form local states
-  const [rankings, setRankings] = useState<Record<string, number>>({
-    'Opening Government': 1,
-    'Opening Opposition': 2,
-    'Closing Government': 3,
-    'Closing Opposition': 4,
-  });
-  const [speakerPoints, setSpeakerPoints] = useState<Record<SpeakerRole, string>>({
-    PM: '75', LO: '75', DPM: '75', DLO: '75', MG: '75', MO: '75', GW: '75', OW: '75'
-  });
-  const [juryNotes, setJuryNotes] = useState('');
-  const [releaseVotes, setReleaseVotes] = useState(false);
-  const [scoringError, setScoringError] = useState<string | null>(null);
-
   // Jury private notepad (saved locally)
   const [draftScores, setDraftScores] = useState<Record<SpeakerRole, string>>(() => {
     try {
-      const saved = localStorage.getItem(`parla_draft_scores_${roomId}`);
+      const saved = localStorage.getItem(`kursu_draft_scores_${roomId}`);
       return saved ? JSON.parse(saved) : {
         PM: '75', LO: '75', DPM: '75', DLO: '75', MG: '75', MO: '75', GW: '75', OW: '75'
       };
@@ -73,28 +59,64 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
     }
   });
   const [draftNotes, setDraftNotes] = useState(() => {
-    return localStorage.getItem(`parla_draft_notes_${roomId}`) || '';
+    return localStorage.getItem(`kursu_draft_notes_${roomId}`) || '';
   });
 
   const timerIntervalRef = useRef<any>(null);
   const prepIntervalRef = useRef<any>(null);
 
-  // Load and poll room data
+  // Determine user seat/role
+  const isJuryOrAdmin = user ? (user.role === 'jury' || user.role === 'admin') : false;
+
+  // Load and subscribe to room data using Supabase Realtime
   useEffect(() => {
-    const fetchRoom = () => {
-      const activeRooms = Database.getRooms();
-      const currentRoom = activeRooms.find(r => r.roomId === roomId);
-      if (currentRoom) {
-        setRoom(currentRoom);
-      } else {
-        onLeave();
+    const fetchInitialRoom = async () => {
+      try {
+        const { data: dbRoom, error } = await supabase
+          .from('rooms')
+          .select('*')
+          .eq('room_id', roomId)
+          .maybeSingle();
+
+        if (error) {
+          console.error('Error fetching initial room:', error);
+          return;
+        }
+
+        if (dbRoom) {
+          setRoom(mapToRoomState(dbRoom));
+        } else {
+          onLeave();
+        }
+      } catch (err) {
+        console.error('Error fetching initial room:', err);
       }
     };
 
-    fetchRoom();
-    const interval = setInterval(fetchRoom, 2000);
+    fetchInitialRoom();
+
+    const roomChannel = supabase
+      .channel('room-update')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'rooms',
+          filter: `room_id=eq.${roomId}`
+        },
+        (payload) => {
+          if (payload.eventType === 'DELETE') {
+            onLeave();
+          } else if (payload.new) {
+            setRoom(mapToRoomState(payload.new));
+          }
+        }
+      )
+      .subscribe();
+
     return () => {
-      clearInterval(interval);
+      supabase.removeChannel(roomChannel);
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
       if (prepIntervalRef.current) clearInterval(prepIntervalRef.current);
     };
@@ -110,22 +132,22 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
         setLocalElapsed(elapsed);
 
         // Auto expire active POI request if expired
-        if (room.activePoi && room.activePoi.status === 'pending') {
+        if (isJuryOrAdmin && room.activePoi && room.activePoi.status === 'pending') {
           const poiAge = Date.now() - room.activePoi.requestedAt;
           if (poiAge > 15000) {
             Database.updateRoom(roomId, (r) => {
               r.activePoi = null;
-            });
+            }).catch(err => console.error("Error auto-expiring POI:", err));
           }
         }
         
         // Auto expire accepted POI floor after 15 seconds
-        if (room.activePoi && room.activePoi.status === 'accepted' && room.activePoi.acceptedAt) {
+        if (isJuryOrAdmin && room.activePoi && room.activePoi.status === 'accepted' && room.activePoi.acceptedAt) {
           const acceptedAge = Date.now() - room.activePoi.acceptedAt;
           if (acceptedAge > 15000) {
             Database.updateRoom(roomId, (r) => {
               r.activePoi = null;
-            });
+            }).catch(err => console.error("Error auto-expiring POI floor:", err));
           }
         }
       };
@@ -167,14 +189,13 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
         prepIntervalRef.current = null;
       }
     };
-  }, [room, roomId]);
+  }, [room, roomId, isJuryOrAdmin]);
 
   if (!user || !room) return null;
 
   // Determine user seat/role
   const userSeat = Object.entries(room.participants).find(([_, p]) => p.id === user.id && p.assignedSpeakerRole);
   const userSpeakerRole = userSeat ? (userSeat[1].assignedSpeakerRole as SpeakerRole) : null;
-  const isJuryOrAdmin = user.role === 'jury' || user.role === 'admin';
 
   // Helpers
   const formatTime = (secs: number) => {
@@ -201,17 +222,17 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
   const handleDraftScoreChange = (role: SpeakerRole, val: string) => {
     const nextDraft = { ...draftScores, [role]: val };
     setDraftScores(nextDraft);
-    localStorage.setItem(`parla_draft_scores_${roomId}`, JSON.stringify(nextDraft));
+    localStorage.setItem(`kursu_draft_scores_${roomId}`, JSON.stringify(nextDraft));
   };
 
   const handleDraftNotesChange = (val: string) => {
     setDraftNotes(val);
-    localStorage.setItem(`parla_draft_notes_${roomId}`, val);
+    localStorage.setItem(`kursu_draft_notes_${roomId}`, val);
   };
 
   // Seating
-  const handleSit = (role: SpeakerRole) => {
-    Database.updateRoom(roomId, (r) => {
+  const handleSit = async (role: SpeakerRole) => {
+    const res = await Database.updateRoom(roomId, (r) => {
       Object.keys(r.participants).forEach(id => {
         if (r.participants[id].id === user.id) {
           r.participants[id].assignedSpeakerRole = null;
@@ -231,55 +252,61 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
         };
       }
     });
+    if (res.success && res.room) setRoom(res.room);
   };
 
-  const handleStandUp = () => {
-    Database.updateRoom(roomId, (r) => {
+  const handleStandUp = async () => {
+    const res = await Database.updateRoom(roomId, (r) => {
       if (r.participants[user.id]) {
         r.participants[user.id].assignedSpeakerRole = null;
       }
     });
+    if (res.success && res.room) setRoom(res.room);
   };
 
-  const handleToggleMute = () => {
-    Database.updateRoom(roomId, (r) => {
+  const handleToggleMute = async () => {
+    const res = await Database.updateRoom(roomId, (r) => {
       if (r.participants[user.id]) {
         r.participants[user.id].isMuted = !r.participants[user.id].isMuted;
       }
     });
+    if (res.success && res.room) setRoom(res.room);
   };
 
   // States
-  const handleStartPrep = () => {
-    Database.updateRoom(roomId, (r) => {
+  const handleStartPrep = async () => {
+    const res = await Database.updateRoom(roomId, (r) => {
       r.status = 'preparation';
       r.prepStartedAt = Date.now();
     });
+    if (res.success && res.room) setRoom(res.room);
   };
 
-  const handleSkipPrep = () => {
-    Database.updateRoom(roomId, (r) => {
+  const handleSkipPrep = async () => {
+    const res = await Database.updateRoom(roomId, (r) => {
       r.status = 'debate';
       r.prepStartedAt = null;
       r.activeSpeaker = 'PM'; // automatically start PM
       r.timer = { status: 'idle', elapsedSeconds: 0, startedAt: null, pausedAt: null };
       r.activePoi = null;
     });
+    if (res.success && res.room) setRoom(res.room);
   };
 
-  const handleRevealMotion = () => {
-    Database.updateRoom(roomId, (r) => {
+  const handleRevealMotion = async () => {
+    const res = await Database.updateRoom(roomId, (r) => {
       r.isMotionReleased = true;
     });
+    if (res.success && res.room) setRoom(res.room);
   };
 
   // Automated next speaker sequencing PM -> LO -> DPM -> DLO -> MG -> MO -> GW -> OW
-  const handleNextSpeaker = () => {
+  const handleNextSpeaker = async () => {
     if (!room.activeSpeaker) return;
     const currentIndex = SPEAKER_ORDER.indexOf(room.activeSpeaker);
     if (currentIndex === -1) return;
 
-    Database.updateRoom(roomId, (r) => {
+    const res = await Database.updateRoom(roomId, (r) => {
       if (currentIndex === SPEAKER_ORDER.length - 1) {
         r.status = 'scoring';
         r.activeSpeaker = null;
@@ -291,35 +318,84 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
         r.activePoi = null;
       }
     });
+    if (res.success && res.room) setRoom(res.room);
   };
 
   // Chronometer
-  const handleStartTimer = () => {
-    Database.updateRoom(roomId, (r) => {
-      r.timer.status = 'running';
-      r.timer.startedAt = Date.now() - (r.timer.elapsedSeconds * 1000);
-    });
+  const handleStartTimer = async () => {
+    if (room) {
+      setRoom({
+        ...room,
+        timer: {
+          ...room.timer,
+          status: 'running',
+          startedAt: Date.now() - (room.timer.elapsedSeconds * 1000)
+        }
+      });
+    }
+
+    try {
+      await Database.updateRoom(roomId, (r) => {
+        r.timer.status = 'running';
+        r.timer.startedAt = Date.now() - (r.timer.elapsedSeconds * 1000);
+      });
+    } catch (err) {
+      console.error("Error starting timer on database:", err);
+    }
   };
 
-  const handlePauseTimer = () => {
-    Database.updateRoom(roomId, (r) => {
-      r.timer.status = 'paused';
-      r.timer.elapsedSeconds = localElapsed;
-      r.timer.startedAt = null;
-    });
+  const handlePauseTimer = async () => {
+    if (room) {
+      setRoom({
+        ...room,
+        timer: {
+          ...room.timer,
+          status: 'paused',
+          elapsedSeconds: localElapsed,
+          startedAt: null
+        }
+      });
+    }
+
+    try {
+      await Database.updateRoom(roomId, (r) => {
+        r.timer.status = 'paused';
+        r.timer.elapsedSeconds = localElapsed;
+        r.timer.startedAt = null;
+      });
+    } catch (err) {
+      console.error("Error pausing timer on database:", err);
+    }
   };
 
-  const handleResetTimer = () => {
-    Database.updateRoom(roomId, (r) => {
-      r.timer = { status: 'idle', elapsedSeconds: 0, startedAt: null, pausedAt: null };
-      r.activePoi = null;
-    });
+  const handleResetTimer = async () => {
+    if (room) {
+      setRoom({
+        ...room,
+        timer: {
+          status: 'idle',
+          elapsedSeconds: 0,
+          startedAt: null,
+          pausedAt: null
+        },
+        activePoi: null
+      });
+    }
+
+    try {
+      await Database.updateRoom(roomId, (r) => {
+        r.timer = { status: 'idle', elapsedSeconds: 0, startedAt: null, pausedAt: null };
+        r.activePoi = null;
+      });
+    } catch (err) {
+      console.error("Error resetting timer on database:", err);
+    }
   };
 
   // POI
-  const handleRequestPoi = () => {
+  const handleRequestPoi = async () => {
     if (!userSpeakerRole) return;
-    Database.updateRoom(roomId, (r) => {
+    const res = await Database.updateRoom(roomId, (r) => {
       r.activePoi = {
         id: Math.random().toString(),
         requesterId: user.id,
@@ -330,26 +406,29 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
         status: 'pending'
       };
     });
+    if (res.success && res.room) setRoom(res.room);
   };
 
-  const handleAcceptPoi = () => {
-    Database.updateRoom(roomId, (r) => {
+  const handleAcceptPoi = async () => {
+    const res = await Database.updateRoom(roomId, (r) => {
       if (r.activePoi) {
         r.activePoi.status = 'accepted';
         r.activePoi.acceptedAt = Date.now();
       }
     });
+    if (res.success && res.room) setRoom(res.room);
   };
 
-  const handleDeclinePoi = () => {
-    Database.updateRoom(roomId, (r) => {
+  const handleDeclinePoi = async () => {
+    const res = await Database.updateRoom(roomId, (r) => {
       r.activePoi = null;
     });
+    if (res.success && res.room) setRoom(res.room);
   };
 
   // Votes
-  const handleVote = (team: 'HA' | 'MA' | 'HK' | 'MK') => {
-    Database.updateRoom(roomId, (r) => {
+  const handleVote = async (team: 'HA' | 'MA' | 'HK' | 'MK') => {
+    const res = await Database.updateRoom(roomId, (r) => {
       const existingVoteIndex = r.spectatorVotes.findIndex(v => v.userId === user.id);
       if (existingVoteIndex !== -1) {
         r.spectatorVotes[existingVoteIndex].team = team;
@@ -362,57 +441,9 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
         });
       }
     });
+    if (res.success && res.room) setRoom(res.room);
   };
 
-  // Open scoring modal prefilled with notepad drafts
-  const handleOpenScoringModal = () => {
-    setRankings({
-      'Opening Government': 1,
-      'Opening Opposition': 2,
-      'Closing Government': 3,
-      'Closing Opposition': 4,
-    });
-    setSpeakerPoints(draftScores);
-    setJuryNotes(draftNotes);
-    setShowScoringModal(true);
-  };
-
-  const handleScoreSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    const values = Object.values(rankings);
-    const uniqueValues = new Set(values);
-    if (uniqueValues.size !== 4) {
-      setScoringError('Lütfen her takıma benzersiz bir sıralama veriniz.');
-      return;
-    }
-
-    const pointsMap: Record<SpeakerRole, number> = {} as any;
-    for (const role of SPEAKER_ORDER) {
-      const val = parseInt(speakerPoints[role], 10);
-      if (isNaN(val) || val < 50 || val > 100) {
-        setScoringError(`Lütfen ${SPEAKER_DETAILS[role].name} için 50 ile 100 arasında puan giriniz.`);
-        return;
-      }
-      pointsMap[role] = val;
-    }
-
-    const results: DebateResult = {
-      rankings: rankings as any,
-      speakerPoints: pointsMap,
-      juryNotes,
-      submittedAt: new Date().toISOString()
-    };
-
-    Database.updateRoom(roomId, (r) => {
-      r.result = results;
-      r.areSpectatorVotesReleased = releaseVotes;
-      r.status = 'finished';
-    });
-
-    setShowScoringModal(false);
-    setScoringError(null);
-  };
 
 
 
@@ -767,20 +798,16 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
       )}
 
       {room.status === 'scoring' && (
-        <div className="hero-center-section">
-          <Award size={48} className="text-primary animate-pulse" style={{ marginBottom: '12px' }} />
-          <h2 style={{ fontSize: '1.2rem', margin: '0 0 6px 0' }}>Münazara Değerlendirme Aşaması</h2>
-          
-          {isJuryOrAdmin ? (
-            <div style={{ textAlign: 'center' }}>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '14px', maxWidth: '400px' }}>
-                Maç tamamlandı. Jüri başkanı olarak skorları ve gerekçeleri girmek için değerlendirme formunu açabilirsiniz.
-              </p>
-              <button className="btn btn-primary" onClick={handleOpenScoringModal} style={{ padding: '8px 16px', fontSize: '0.85rem' }}>
-                <FileText size={16} /> Değerlendirme Formunu Aç
-              </button>
-            </div>
-          ) : (
+        isJuryOrAdmin ? (
+          <JuryPanel
+            roomId={roomId}
+            onClose={onLeave}
+            onSuccess={(updatedRoom) => setRoom(updatedRoom)}
+          />
+        ) : (
+          <div className="hero-center-section">
+            <Award size={48} className="text-primary animate-pulse" style={{ marginBottom: '12px' }} />
+            <h2 style={{ fontSize: '1.2rem', margin: '0 0 6px 0' }}>Münazara Değerlendirme Aşaması</h2>
             <div style={{ textAlign: 'center', padding: '16px' }}>
               <div className="animate-spin" style={{ width: '20px', height: '20px', border: '2px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--color-primary)', borderRadius: '50%', margin: '0 auto 10px auto' }}></div>
               <h3 style={{ fontSize: '0.9rem', marginBottom: '4px' }}>Jüri sonuçları değerlendiriyor...</h3>
@@ -788,8 +815,8 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
                 Sonuçlar jüri başkanı tarafından onaylandığında salona yayınlanacaktır.
               </p>
             </div>
-          )}
-        </div>
+          </div>
+        )
       )}
 
       {room.status === 'finished' && room.result && (
@@ -1088,142 +1115,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
         </>
       )}
 
-      {/* Jury scoring modal */}
-      {showScoringModal && (
-        <div className="modal-overlay">
-          <div className="modal-content glass-panel animate-fade-in" style={{ maxWidth: '600px', width: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Resmi Skor Giriş Belgesi</h2>
-              <button className="password-toggle-btn" style={{ position: 'static', padding: 0, border: 'none', background: 'none' }} onClick={() => setShowScoringModal(false)}>
-                <X size={20} />
-              </button>
-            </div>
 
-            {scoringError && (
-              <div className="auth-error" style={{ marginBottom: '12px', padding: '10px 14px' }}>
-                <AlertTriangle size={16} />
-                <span style={{ fontSize: '0.8rem' }}>{scoringError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleScoreSubmit} className="jury-score-sheet">
-              {/* Poll preview inside modal for Jury */}
-              <div style={{ padding: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: 'var(--border-radius-sm)', marginBottom: '12px' }}>
-                <span style={{ fontWeight: 600, display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '8px', color: 'var(--color-secondary)' }}>Seyirci Anketi Sonuçları (Sadece Jüri Görebilir):</span>
-                {renderPollPercentages()}
-              </div>
-
-              <h3 style={{ fontSize: '0.9rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '4px', margin: '0 0 10px 0' }}>
-                Takım Sıralamaları (HA, MA, HK, MK)
-              </h3>
-              <div className="score-rank-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '14px' }}>
-                {[
-                  { name: 'Opening Government', label: 'HA (Hükümet Açılış)' },
-                  { name: 'Opening Opposition', label: 'MA (Muhalefet Açılış)' },
-                  { name: 'Closing Government', label: 'HK (Hükümet Kapanış)' },
-                  { name: 'Closing Opposition', label: 'MK (Muhalefet Kapanış)' }
-                ].map(team => (
-                  <div key={team.name} className="input-group" style={{ margin: 0 }}>
-                    <label className="input-label" style={{ fontSize: '0.65rem' }}>{team.label}</label>
-                    <select 
-                      className="input-field"
-                      value={rankings[team.name]}
-                      onChange={(e) => setRankings(prev => ({ ...prev, [team.name]: parseInt(e.target.value, 10) }))}
-                      style={{ fontSize: '0.8rem', padding: '6px' }}
-                    >
-                      <option value="1">1. (Birinci)</option>
-                      <option value="2">2. (İkinci)</option>
-                      <option value="3">3. (Üçüncü)</option>
-                      <option value="4">4. (Dördüncü)</option>
-                    </select>
-                  </div>
-                ))}
-              </div>
-
-              <h3 style={{ fontSize: '0.9rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '4px', margin: '8px 0 10px 0' }}>
-                Konuşmacı Puanları (50 - 100)
-              </h3>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '14px' }}>
-                <div className="score-bench-points">
-                  <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: 'var(--color-primary)', display: 'block', marginBottom: '6px' }}>HÜKÜMET (GOV)</span>
-                  {['PM', 'DPM', 'MG', 'GW'].map(role => (
-                    <div key={role} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '4px' }}>
-                      <label htmlFor={`pts-${role}`} style={{ fontSize: '0.75rem' }}>{SPEAKER_DETAILS[role as SpeakerRole].name}</label>
-                      <input 
-                        id={`pts-${role}`}
-                        type="number" 
-                        className="input-field score-point-input"
-                        style={{ padding: '4px 8px', fontSize: '0.8rem', width: '60px', textAlign: 'center' }}
-                        min="50"
-                        max="100"
-                        value={speakerPoints[role as SpeakerRole]}
-                        onChange={(e) => setSpeakerPoints(prev => ({ ...prev, [role]: e.target.value }))}
-                        required
-                      />
-                    </div>
-                  ))}
-                </div>
-
-                <div className="score-bench-points">
-                  <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: 'var(--color-secondary)', display: 'block', marginBottom: '6px' }}>MUHALEFET (OPP)</span>
-                  {['LO', 'DLO', 'MO', 'OW'].map(role => (
-                    <div key={role} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginBottom: '4px' }}>
-                      <label htmlFor={`pts-${role}`} style={{ fontSize: '0.75rem' }}>{SPEAKER_DETAILS[role as SpeakerRole].name}</label>
-                      <input 
-                        id={`pts-${role}`}
-                        type="number" 
-                        className="input-field score-point-input"
-                        style={{ padding: '4px 8px', fontSize: '0.8rem', width: '60px', textAlign: 'center' }}
-                        min="50"
-                        max="100"
-                        value={speakerPoints[role as SpeakerRole]}
-                        onChange={(e) => setSpeakerPoints(prev => ({ ...prev, [role]: e.target.value }))}
-                        required
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="input-group" style={{ margin: '0 0 12px 0' }}>
-                <label className="input-label" htmlFor="rationales" style={{ fontSize: '0.7rem' }}>GEREKÇELİ KARAR (RFD) BEYANI</label>
-                <textarea 
-                  id="rationales"
-                  className="input-field" 
-                  style={{ minHeight: '80px', fontSize: '0.8rem', resize: 'vertical' }}
-                  placeholder="Gerekçeli kararı girin..."
-                  value={juryNotes}
-                  onChange={(e) => setJuryNotes(e.target.value)}
-                />
-              </div>
-
-              {/* JURY PERMISSION TO RELEASE SPECTATOR VOTES */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '0 0 16px 0', padding: '4px 0' }}>
-                <input 
-                  id="release-votes-check"
-                  type="checkbox" 
-                  checked={releaseVotes}
-                  onChange={(e) => setReleaseVotes(e.target.checked)}
-                  style={{ width: '16px', height: '16px', cursor: 'pointer' }}
-                />
-                <label htmlFor="release-votes-check" style={{ fontSize: '0.85rem', fontWeight: 500, cursor: 'pointer' }}>
-                  Seyirci Anketi Sonuçlarını Salona Yayınla
-                </label>
-              </div>
-
-              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowScoringModal(false)}>
-                  İptal
-                </button>
-                <button type="submit" className="btn btn-primary">
-                  Sonuçları Onayla ve Yayınla
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

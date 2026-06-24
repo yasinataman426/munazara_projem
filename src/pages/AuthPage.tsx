@@ -135,7 +135,7 @@ export const AuthPage: React.FC = () => {
         <div className="auth-header">
           <div className="logo-text" style={{ fontSize: '2.2rem', justifyContent: 'center', marginBottom: '16px' }}>
             <Sparkles size={28} style={{ color: '#60a5fa' }} />
-            PARLA
+            KÜRSÜ
           </div>
           <p className="auth-subtitle">
             {tab === 'login' 
@@ -185,7 +185,7 @@ export const AuthPage: React.FC = () => {
                 id="login-email"
                 type="email" 
                 className="input-field" 
-                placeholder="ornek@parlamunazara.com"
+                placeholder="ornek@kursumunazara.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={isLoading}
@@ -276,7 +276,7 @@ export const AuthPage: React.FC = () => {
                   id="register-email"
                   type="email" 
                   className="input-field" 
-                  placeholder="ornek@parlamunazara.com"
+                  placeholder="ornek@kursumunazara.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={isLoading}
@@ -432,7 +432,7 @@ export const AuthPage: React.FC = () => {
         )}
 
         <div style={{ textAlign: 'center', marginTop: '24px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-          Parla Münazara Platformu &copy; {new Date().getFullYear()}
+          Kürsü Münazara Platformu &copy; {new Date().getFullYear()}
         </div>
       </div>
     </div>

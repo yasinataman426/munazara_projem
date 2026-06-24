@@ -1,114 +1,116 @@
-import type { User, UserRole, DebaterStatus, Motion, RoomState } from '../types';
+import type { User, UserRole, DebaterStatus, Motion, RoomState, DebateResult } from '../types';
+import { supabase } from './supabaseClient';
 
-const USERS_KEY = 'parla_users';
-const CURRENT_USER_KEY = 'parla_current_user';
-const MOTIONS_KEY = 'parla_motions';
-const ROOMS_KEY = 'parla_rooms';
+const CURRENT_USER_KEY = 'kursu_current_user';
 
-const DEFAULT_MOTIONS: Motion[] = [
-  {
-    id: 'm1',
-    text: 'Bu meclis yapay zeka gelişimini sınırlandırır.',
-    category: 'Teknoloji',
-    infoSlide: 'Yapay zeka modellerinin son yıllardaki logaritmik hızdaki gelişimi ve otomasyonun iş gücü piyasalarına etkisi göz önüne alınmalıdır.'
-  },
-  {
-    id: 'm2',
-    text: 'Bu meclis sosyal medyanın anonim olmasını yasaklar.',
-    category: 'Toplum & Teknoloji',
-    infoSlide: 'Sosyal medya platformlarında kimlik doğrulaması zorunlu hale getirilerek sahte hesapların ve siber zorbalığın önüne geçilmesi amaçlanmaktadır.'
-  },
-  {
-    id: 'm3',
-    text: 'Bu meclis tüm vergileri tek bir karbon vergisiyle değiştirir.',
-    category: 'Ekonomi & Çevre',
-    infoSlide: 'Mevcut gelir ve kurumlar vergisi gibi tüm dolaylı/dolaysız vergiler kaldırılarak sadece karbon salınımı üzerinden vergilendirme yapılacaktır.'
-  },
-  {
-    id: 'm4',
-    text: 'Bu meclis yargıçların yerine yapay zeka karar vericilerinin kullanılmasını destekler.',
-    category: 'Hukuk & Adalet',
-    infoSlide: 'AI yargıç sistemleri, insan yargıçların sahip olabileceği bilinçaltı önyargılardan arındırılmış ve milyonlarca içtihadı anında analiz edebilen sistemlerdir.'
-  },
-  {
-    id: 'm5',
-    text: 'Bu meclis asgari ücret uygulamasını kaldırıp evrensel temel geliri getirir.',
-    category: 'Ekonomi',
-    infoSlide: 'Her vatandaşa çalışıp çalışmadığına bakılmaksızın devlet tarafından düzenli ve koşulsuz bir asgari geçim ödeneği sağlanacaktır.'
-  }
-];
+// --- Database Schema Mapping Helpers ---
 
-const DEFAULT_ROOMS = (): RoomState[] => [
-  {
-    roomId: 'r1',
-    roomName: 'Uludağ Kupası - Yarı Final A',
-    status: 'preparation',
-    motion: DEFAULT_MOTIONS[0],
-    isMotionReleased: false,
-    areSpectatorVotesReleased: false,
-    prepStartedAt: Date.now() - 300000,
-    activeSpeaker: null,
-    timer: { status: 'idle', elapsedSeconds: 0, startedAt: null, pausedAt: null },
-    activePoi: null,
-    spectatorVotes: [],
-    result: null,
-    participants: {
-      'p1': { id: 'p1', username: 'jury_ali', role: 'jury', status: null, joinedAt: Date.now(), isMuted: false },
-      'p2': { id: 'p2', username: 'deb_berk', role: 'debater', status: 'open', joinedAt: Date.now(), isMuted: false }
-    }
-  },
-  {
-    roomId: 'r2',
-    roomName: 'Ege Open Münazara Şampiyonası',
-    status: 'lobby',
-    motion: DEFAULT_MOTIONS[2],
-    isMotionReleased: false,
-    areSpectatorVotesReleased: false,
-    prepStartedAt: null,
-    activeSpeaker: null,
-    timer: { status: 'idle', elapsedSeconds: 0, startedAt: null, pausedAt: null },
-    activePoi: null,
-    spectatorVotes: [],
-    result: null,
-    participants: {
-      'p3': { id: 'p3', username: 'jury_ayse', role: 'jury', status: null, joinedAt: Date.now(), isMuted: false }
-    }
-  },
-  {
-    roomId: 'r3',
-    roomName: 'Parla Haftalık Gösteri Maçı',
-    status: 'debate',
-    motion: DEFAULT_MOTIONS[3],
-    isMotionReleased: true,
-    areSpectatorVotesReleased: false,
-    prepStartedAt: Date.now() - 1000000,
-    activeSpeaker: 'PM',
-    timer: { status: 'running', elapsedSeconds: 240, startedAt: Date.now() - 240000, pausedAt: null },
-    activePoi: null,
-    spectatorVotes: [
-      { userId: 'u100', username: 'spectator_can', team: 'HA', timestamp: Date.now() }
-    ],
-    result: null,
-    participants: {
-      'p4': { id: 'p4', username: 'jury_mehmet', role: 'jury', status: null, joinedAt: Date.now(), isMuted: false }
-    }
-  }
-];
+function mapToUser(dbUser: any): User {
+  return {
+    id: dbUser.id,
+    username: dbUser.username,
+    fullName: dbUser.full_name,
+    phoneNumber: dbUser.phone_number,
+    email: dbUser.email,
+    password: dbUser.password,
+    city: dbUser.city,
+    age: Number(dbUser.age),
+    school: dbUser.school,
+    role: dbUser.role as UserRole,
+    status: dbUser.status as DebaterStatus,
+    createdAt: dbUser.created_at
+  };
+}
+
+function mapToDbUser(user: User): any {
+  return {
+    id: user.id,
+    username: user.username,
+    full_name: user.fullName,
+    phone_number: user.phoneNumber,
+    email: user.email,
+    password: user.password,
+    city: user.city,
+    age: user.age,
+    school: user.school,
+    role: user.role,
+    status: user.status,
+    created_at: user.createdAt
+  };
+}
+
+function mapToMotion(dbMotion: any): Motion {
+  return {
+    id: dbMotion.id,
+    text: dbMotion.text,
+    category: dbMotion.category,
+    infoSlide: dbMotion.info_slide
+  };
+}
+
+function mapToDbMotion(motion: Motion): any {
+  return {
+    id: motion.id,
+    text: motion.text,
+    category: motion.category,
+    info_slide: motion.infoSlide
+  };
+}
+
+export function mapToRoomState(dbRoom: any): RoomState {
+  return {
+    roomId: dbRoom.room_id,
+    roomName: dbRoom.room_name,
+    status: dbRoom.status,
+    motion: dbRoom.motion,
+    isMotionReleased: dbRoom.is_motion_released,
+    areSpectatorVotesReleased: dbRoom.are_spectator_votes_released,
+    prepStartedAt: dbRoom.prep_started_at ? Number(dbRoom.prep_started_at) : null,
+    activeSpeaker: dbRoom.active_speaker,
+    timer: dbRoom.timer,
+    activePoi: dbRoom.active_poi,
+    spectatorVotes: dbRoom.spectator_votes || [],
+    result: dbRoom.result,
+    participants: dbRoom.participants || {}
+  };
+}
+
+function mapToDbRoom(room: RoomState): any {
+  return {
+    room_id: room.roomId,
+    room_name: room.roomName,
+    status: room.status,
+    motion: room.motion,
+    is_motion_released: room.isMotionReleased,
+    are_spectator_votes_released: room.areSpectatorVotesReleased,
+    prep_started_at: room.prepStartedAt,
+    active_speaker: room.activeSpeaker,
+    timer: room.timer,
+    active_poi: room.activePoi,
+    spectator_votes: room.spectatorVotes,
+    result: room.result,
+    participants: room.participants
+  };
+}
+
+// --- Database Operations Wrapper ---
 
 export class Database {
   // Get all registered users
-  static getUsers(): User[] {
-    const data = localStorage.getItem(USERS_KEY);
-    if (!data) return [];
-    try {
-      return JSON.parse(data);
-    } catch {
+  static async getUsers(): Promise<User[]> {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*');
+
+    if (error || !data) {
+      console.error('Error fetching users:', error);
       return [];
     }
+    return data.map(mapToUser);
   }
 
   // Register a new user
-  static register(
+  static async register(
     username: string, 
     fullName: string, 
     phoneNumber: string, 
@@ -119,58 +121,91 @@ export class Database {
     school: string, 
     role: UserRole, 
     status: DebaterStatus
-  ): { success: boolean; message: string; user?: User } {
-    const users = this.getUsers();
-    
-    // Check if email already exists
-    if (users.some(u => u.email.toLowerCase() === email.toLowerCase())) {
-      return { success: false, message: 'Bu e-posta adresi zaten kayıtlı.' };
+  ): Promise<{ success: boolean; message: string; user?: User }> {
+    try {
+      // Check if email already exists
+      const { data: existingEmail } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', email)
+        .maybeSingle();
+
+      if (existingEmail) {
+        return { success: false, message: 'Bu e-posta adresi zaten kayıtlı.' };
+      }
+
+      // Check if username already exists
+      const { data: existingUsername } = await supabase
+        .from('users')
+        .select('id')
+        .eq('username', username)
+        .maybeSingle();
+
+      if (existingUsername) {
+        return { success: false, message: 'Bu kullanıcı adı zaten alınmış.' };
+      }
+
+      const newUser: User = {
+        id: Math.random().toString(36).substring(2, 9),
+        username,
+        fullName,
+        phoneNumber,
+        email,
+        password,
+        city,
+        age,
+        school,
+        role,
+        status: role === 'debater' ? status : null,
+        createdAt: new Date().toISOString()
+      };
+
+      const { error } = await supabase
+        .from('users')
+        .insert([mapToDbUser(newUser)]);
+
+      if (error) {
+        return { success: false, message: 'Kayıt sırasında bir hata oluştu: ' + error.message };
+      }
+
+      return { success: true, message: 'Kayıt başarılı.', user: newUser };
+    } catch (err: any) {
+      return { success: false, message: 'Kayıt hatası: ' + err.message };
     }
-
-    // Check if username already exists
-    if (users.some(u => u.username.toLowerCase() === username.toLowerCase())) {
-      return { success: false, message: 'Bu kullanıcı adı zaten alınmış.' };
-    }
-
-    const newUser: User = {
-      id: Math.random().toString(36).substring(2, 9),
-      username,
-      fullName,
-      phoneNumber,
-      email,
-      password,
-      city,
-      age,
-      school,
-      role,
-      status: role === 'debater' ? status : null,
-      createdAt: new Date().toISOString()
-    };
-
-    users.push(newUser);
-    localStorage.setItem(USERS_KEY, JSON.stringify(users));
-
-    return { success: true, message: 'Kayıt başarılı.', user: newUser };
   }
 
   // Login a user
-  static login(email: string, password?: string): { success: boolean; message: string; user?: User } {
-    const users = this.getUsers();
-    const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+  static async login(emailOrUsername: string, password?: string): Promise<{ success: boolean; message: string; user?: User }> {
+    try {
+      const { data: dbUser, error } = await supabase
+        .from('users')
+        .select('*')
+        .or(`email.eq.${emailOrUsername},username.eq.${emailOrUsername}`)
+        .maybeSingle();
 
-    if (!user) {
-      return { success: false, message: 'Kullanıcı bulunamadı. Lütfen kayıt olun.' };
+      if (error) {
+        console.error('Login database error:', error);
+        return { success: false, message: 'Veritabanı hatası: ' + error.message };
+      }
+
+      if (!dbUser) {
+        return { success: false, message: 'Kullanıcı bulunamadı. Lütfen kayıt olun.' };
+      }
+
+      const user = mapToUser(dbUser);
+
+      if (user.password && user.password !== password) {
+        return { success: false, message: 'Hatalı şifre. Lütfen tekrar deneyin.' };
+      }
+
+      sessionStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+      return { success: true, message: 'Giriş başarılı.', user };
+    } catch (err: any) {
+      return { success: false, message: 'Giriş hatası: ' + err.message };
     }
-
-    if (user.password && user.password !== password) {
-      return { success: false, message: 'Hatalı şifre. Lütfen tekrar deneyin.' };
-    }
-
-    sessionStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
-    return { success: true, message: 'Giriş başarılı.', user };
   }
 
-  // Get current logged in user
+  // Get current logged in user (synchronous from session storage)
   static getCurrentUser(): User | null {
     const data = sessionStorage.getItem(CURRENT_USER_KEY);
     if (!data) return null;
@@ -181,169 +216,219 @@ export class Database {
     }
   }
 
-  // Logout current user
+  // Logout current user (synchronous local session clearing)
   static logout(): void {
     sessionStorage.removeItem(CURRENT_USER_KEY);
   }
 
   // Get all motions
-  static getMotions(): Motion[] {
-    const data = localStorage.getItem(MOTIONS_KEY);
-    if (!data) {
-      localStorage.setItem(MOTIONS_KEY, JSON.stringify(DEFAULT_MOTIONS));
-      return DEFAULT_MOTIONS;
+  static async getMotions(): Promise<Motion[]> {
+    const { data, error } = await supabase
+      .from('motions')
+      .select('*');
+
+    if (error || !data) {
+      console.error('Error fetching motions:', error);
+      return [];
     }
-    try {
-      return JSON.parse(data);
-    } catch {
-      return DEFAULT_MOTIONS;
-    }
+    return data.map(mapToMotion);
   }
 
   // Add a motion to archive
-  static addMotion(text: string, category: string, infoSlide?: string): { success: boolean; message: string; motion?: Motion } {
-    const motions = this.getMotions();
-    
-    if (motions.some(m => m.text.toLowerCase() === text.toLowerCase())) {
-      return { success: false, message: 'Bu münazara konusu zaten arşivde mevcut.' };
+  static async addMotion(text: string, category: string, infoSlide?: string): Promise<{ success: boolean; message: string; motion?: Motion }> {
+    try {
+      // Check duplicate
+      const { data: existing } = await supabase
+        .from('motions')
+        .select('id')
+        .eq('text', text)
+        .maybeSingle();
+
+      if (existing) {
+        return { success: false, message: 'Bu münazara konusu zaten arşivde mevcut.' };
+      }
+
+      const newMotion: Motion = {
+        id: 'm_' + Math.random().toString(36).substring(2, 9),
+        text,
+        category,
+        infoSlide
+      };
+
+      const { error } = await supabase
+        .from('motions')
+        .insert([mapToDbMotion(newMotion)]);
+
+      if (error) {
+        return { success: false, message: 'Konu arşive eklenirken hata oluştu: ' + error.message };
+      }
+
+      return { success: true, message: 'Konu başarıyla arşive eklendi.', motion: newMotion };
+    } catch (err: any) {
+      return { success: false, message: 'Konu ekleme hatası: ' + err.message };
     }
-
-    const newMotion: Motion = {
-      id: 'm_' + Math.random().toString(36).substring(2, 9),
-      text,
-      category,
-      infoSlide
-    };
-
-    motions.push(newMotion);
-    localStorage.setItem(MOTIONS_KEY, JSON.stringify(motions));
-    return { success: true, message: 'Konu başarıyla arşive eklendi.', motion: newMotion };
   }
 
   // Get all active rooms
-  static getRooms(): RoomState[] {
-    const data = localStorage.getItem(ROOMS_KEY);
-    if (!data) {
-      const defaultRooms = DEFAULT_ROOMS();
-      localStorage.setItem(ROOMS_KEY, JSON.stringify(defaultRooms));
-      return defaultRooms;
+  static async getRooms(): Promise<RoomState[]> {
+    const { data, error } = await supabase
+      .from('rooms')
+      .select('*');
+
+    if (error || !data) {
+      console.error('Error fetching rooms:', error);
+      return [];
     }
-    try {
-      return JSON.parse(data);
-    } catch {
-      return DEFAULT_ROOMS();
-    }
+    return data.map(mapToRoomState);
   }
 
   // Create a new debate room
-  static createRoom(roomName: string, motionId: string, customMotionText?: string): { success: boolean; message: string; room?: RoomState } {
-    const rooms = this.getRooms();
+  static async createRoom(roomName: string, motionId: string, customMotionText?: string): Promise<{ success: boolean; message: string; room?: RoomState }> {
+    try {
+      // Check if active room name already exists
+      const { data: existing } = await supabase
+        .from('rooms')
+        .select('room_id')
+        .eq('room_name', roomName)
+        .neq('status', 'finished')
+        .maybeSingle();
 
-    if (rooms.some(r => r.roomName.toLowerCase() === roomName.toLowerCase() && r.status !== 'finished')) {
-      return { success: false, message: 'Bu isimde aktif bir oda zaten var.' };
-    }
+      if (existing) {
+        return { success: false, message: 'Bu isimde aktif bir oda zaten var.' };
+      }
 
-    let motion: Motion | null = null;
-    if (motionId === 'custom' && customMotionText) {
-      motion = {
-        id: 'm_custom_' + Math.random().toString(36).substring(2, 9),
-        text: customMotionText,
-        category: 'Özel Konu'
+      let motion: Motion | null = null;
+      if (motionId === 'custom' && customMotionText) {
+        motion = {
+          id: 'm_custom_' + Math.random().toString(36).substring(2, 9),
+          text: customMotionText,
+          category: 'Özel Konu'
+        };
+      } else {
+        const { data: dbMotion } = await supabase
+          .from('motions')
+          .select('*')
+          .eq('id', motionId)
+          .maybeSingle();
+        motion = dbMotion ? mapToMotion(dbMotion) : null;
+      }
+
+      const newRoom: RoomState = {
+        roomId: 'r_' + Math.random().toString(36).substring(2, 9),
+        roomName,
+        status: 'lobby',
+        motion,
+        isMotionReleased: false,
+        areSpectatorVotesReleased: false,
+        prepStartedAt: null,
+        activeSpeaker: null,
+        timer: { status: 'idle', elapsedSeconds: 0, startedAt: null, pausedAt: null },
+        activePoi: null,
+        spectatorVotes: [],
+        result: null,
+        participants: {}
       };
-    } else {
-      const motions = this.getMotions();
-      motion = motions.find(m => m.id === motionId) || null;
+
+      const { error } = await supabase
+        .from('rooms')
+        .insert([mapToDbRoom(newRoom)]);
+
+      if (error) {
+        return { success: false, message: 'Oda oluşturulurken hata oluştu: ' + error.message };
+      }
+
+      return { success: true, message: 'Münazara odası başarıyla oluşturuldu.', room: newRoom };
+    } catch (err: any) {
+      return { success: false, message: 'Oda oluşturma hatası: ' + err.message };
     }
-
-    const newRoom: RoomState = {
-      roomId: 'r_' + Math.random().toString(36).substring(2, 9),
-      roomName,
-      status: 'lobby',
-      motion,
-      isMotionReleased: false,
-      areSpectatorVotesReleased: false,
-      prepStartedAt: null,
-      activeSpeaker: null,
-      timer: { status: 'idle', elapsedSeconds: 0, startedAt: null, pausedAt: null },
-      activePoi: null,
-      spectatorVotes: [],
-      result: null,
-      participants: {}
-    };
-
-    rooms.push(newRoom);
-    localStorage.setItem(ROOMS_KEY, JSON.stringify(rooms));
-    return { success: true, message: 'Münazara odası başarıyla oluşturuldu.', room: newRoom };
   }
 
   // Delete/close a room
-  static deleteRoom(roomId: string): { success: boolean; message: string } {
-    let rooms = this.getRooms();
-    if (!rooms.some(r => r.roomId === roomId)) {
-      return { success: false, message: 'Oda bulunamadı.' };
+  static async deleteRoom(roomId: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const { error } = await supabase
+        .from('rooms')
+        .delete()
+        .eq('room_id', roomId);
+
+      if (error) {
+        return { success: false, message: 'Oda kapatılırken hata oluştu: ' + error.message };
+      }
+      return { success: true, message: 'Oda başarıyla kapatıldı.' };
+    } catch (err: any) {
+      return { success: false, message: 'Oda silme hatası: ' + err.message };
     }
-    rooms = rooms.filter(r => r.roomId !== roomId);
-    localStorage.setItem(ROOMS_KEY, JSON.stringify(rooms));
-    return { success: true, message: 'Oda başarıyla kapatıldı.' };
   }
 
   // Join a room (add participant)
-  static joinRoom(roomId: string, user: User): { success: boolean; message: string; room?: RoomState } {
-    const rooms = this.getRooms();
-    const roomIndex = rooms.findIndex(r => r.roomId === roomId);
-    if (roomIndex === -1) {
-      return { success: false, message: 'Oda bulunamadı.' };
-    }
-
-    const room = rooms[roomIndex];
-    
-    // Add current user to participants list if not already there
-    if (!room.participants[user.id]) {
-      room.participants[user.id] = {
-        id: user.id,
-        username: user.username,
-        role: user.role,
-        status: user.status,
-        isMuted: false,
-        joinedAt: Date.now()
-      };
-      rooms[roomIndex] = room;
-      localStorage.setItem(ROOMS_KEY, JSON.stringify(rooms));
-    }
-
-    return { success: true, message: 'Odaya başarıyla katıldınız.', room };
+  static async joinRoom(roomId: string, user: User): Promise<{ success: boolean; message: string; room?: RoomState }> {
+    return this.updateRoom(roomId, (room) => {
+      if (!room.participants[user.id]) {
+        room.participants[user.id] = {
+          id: user.id,
+          username: user.username,
+          role: user.role,
+          status: user.status,
+          isMuted: false,
+          joinedAt: Date.now()
+        };
+      }
+    });
   }
 
   // Leave a room (remove participant)
-  static leaveRoom(roomId: string, userId: string): { success: boolean; message: string; room?: RoomState } {
-    const rooms = this.getRooms();
-    const roomIndex = rooms.findIndex(r => r.roomId === roomId);
-    if (roomIndex === -1) {
-      return { success: false, message: 'Oda bulunamadı.' };
-    }
-
-    const room = rooms[roomIndex];
-    if (room.participants[userId]) {
-      delete room.participants[userId];
-      rooms[roomIndex] = room;
-      localStorage.setItem(ROOMS_KEY, JSON.stringify(rooms));
-    }
-
-    return { success: true, message: 'Odadan başarıyla ayrıldınız.', room };
+  static async leaveRoom(roomId: string, userId: string): Promise<{ success: boolean; message: string; room?: RoomState }> {
+    return this.updateRoom(roomId, (room) => {
+      if (room.participants[userId]) {
+        delete room.participants[userId];
+      }
+    });
   }
 
   // Update a room dynamically
-  static updateRoom(roomId: string, updateFn: (room: RoomState) => void): { success: boolean; message: string; room?: RoomState } {
-    const rooms = this.getRooms();
-    const roomIndex = rooms.findIndex(r => r.roomId === roomId);
-    if (roomIndex === -1) {
-      return { success: false, message: 'Oda bulunamadı.' };
-    }
+  static async updateRoom(roomId: string, updateFn: (room: RoomState) => void): Promise<{ success: boolean; message: string; room?: RoomState }> {
+    try {
+      const { data: dbRoom, error: fetchError } = await supabase
+        .from('rooms')
+        .select('*')
+        .eq('room_id', roomId)
+        .maybeSingle();
 
-    const room = rooms[roomIndex];
-    updateFn(room);
-    rooms[roomIndex] = room;
-    localStorage.setItem(ROOMS_KEY, JSON.stringify(rooms));
-    return { success: true, message: 'Oda başarıyla güncellendi.', room };
+      if (fetchError || !dbRoom) {
+        return { success: false, message: 'Oda bulunamadı.' };
+      }
+
+      const room = mapToRoomState(dbRoom);
+      
+      // Perform user mutation callback
+      updateFn(room);
+
+      const dbPayload = mapToDbRoom(room);
+      const { error: updateError } = await supabase
+        .from('rooms')
+        .update(dbPayload)
+        .eq('room_id', roomId);
+
+      if (updateError) {
+        return { success: false, message: 'Oda güncellenemedi: ' + updateError.message };
+      }
+
+      return { success: true, message: 'Oda başarıyla güncellendi.', room };
+    } catch (err: any) {
+      return { success: false, message: 'Oda güncelleme hatası: ' + err.message };
+    }
+  }
+
+  // Update debate result and set status to finished
+  static async updateDebateResult(
+    roomId: string,
+    result: DebateResult,
+    releaseVotes: boolean
+  ): Promise<{ success: boolean; message: string; room?: RoomState }> {
+    return this.updateRoom(roomId, (r) => {
+      r.result = result;
+      r.areSpectatorVotesReleased = releaseVotes;
+      r.status = 'finished';
+    });
   }
 }

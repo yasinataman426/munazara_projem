@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Database } from '../database/database';
 import { RoomPage } from './RoomPage';
+import { supabase } from '../database/supabaseClient';
 import type { RoomState, Motion, DebateStatus, UserRole } from '../types';
 import { 
   LogOut, 
@@ -50,22 +51,51 @@ export const LobbyPage: React.FC = () => {
   const [newMotionInfoSlide, setNewMotionInfoSlide] = useState('');
   const [motionError, setMotionError] = useState<string | null>(null);
 
-  // Load data on init and set up polling for live simulation
+  // Load data on init and set up Supabase Realtime subscriptions
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 2000);
-    return () => clearInterval(interval);
+
+    // Subscribe to changes on rooms and motions tables
+    const channel = supabase
+      .channel('lobby-db-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'rooms' },
+        () => {
+          loadData();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'motions' },
+        () => {
+          loadData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
-  const loadData = () => {
-    setRooms(Database.getRooms());
-    setMotions(Database.getMotions());
+  const loadData = async () => {
+    try {
+      const [roomsData, motionsData] = await Promise.all([
+        Database.getRooms(),
+        Database.getMotions()
+      ]);
+      setRooms(roomsData);
+      setMotions(motionsData);
+    } catch (err) {
+      console.error('Error loading lobby data:', err);
+    }
   };
 
   if (!user) return null;
 
   // Handlers
-  const handleCreateRoom = (e: React.FormEvent) => {
+  const handleCreateRoom = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newRoomName || !selectedMotionId) {
       setRoomError('Lütfen tüm alanları doldurunuz.');
@@ -76,7 +106,7 @@ export const LobbyPage: React.FC = () => {
       return;
     }
 
-    const res = Database.createRoom(newRoomName, selectedMotionId, customMotionText);
+    const res = await Database.createRoom(newRoomName, selectedMotionId, customMotionText);
     if (res.success) {
       // Clear forms
       setNewRoomName('');
@@ -90,14 +120,14 @@ export const LobbyPage: React.FC = () => {
     }
   };
 
-  const handleAddMotion = (e: React.FormEvent) => {
+  const handleAddMotion = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMotionText || !newMotionCategory) {
       setMotionError('Lütfen tüm alanları doldurunuz.');
       return;
     }
 
-    const res = Database.addMotion(newMotionText, newMotionCategory, newMotionInfoSlide);
+    const res = await Database.addMotion(newMotionText, newMotionCategory, newMotionInfoSlide);
     if (res.success) {
       setNewMotionText('');
       setNewMotionCategory('');
@@ -110,9 +140,9 @@ export const LobbyPage: React.FC = () => {
     }
   };
 
-  const handleDeleteRoom = (roomId: string) => {
+  const handleDeleteRoom = async (roomId: string) => {
     if (window.confirm('Bu odayı silmek istediğinizden emin misiniz?')) {
-      Database.deleteRoom(roomId);
+      await Database.deleteRoom(roomId);
       loadData();
       if (selectedRoomId === roomId) {
         setSelectedRoomId(null);
@@ -120,9 +150,9 @@ export const LobbyPage: React.FC = () => {
     }
   };
 
-  const handleJoinRoom = (roomId: string) => {
+  const handleJoinRoom = async (roomId: string) => {
     if (!user) return;
-    const res = Database.joinRoom(roomId, user);
+    const res = await Database.joinRoom(roomId, user);
     if (res.success) {
       setSelectedRoomId(roomId);
       loadData();
@@ -131,9 +161,9 @@ export const LobbyPage: React.FC = () => {
     }
   };
 
-  const handleLeaveRoom = (roomId: string) => {
+  const handleLeaveRoom = async (roomId: string) => {
     if (!user) return;
-    Database.leaveRoom(roomId, user.id);
+    await Database.leaveRoom(roomId, user.id);
     setSelectedRoomId(null);
     loadData();
   };
@@ -212,7 +242,7 @@ export const LobbyPage: React.FC = () => {
       <header className="main-header">
         <div className="container header-content">
           <div className="logo-text">
-            <span>PARLA</span>
+            <span>KÜRSÜ</span>
           </div>
           <div className="header-user-info">
             <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>

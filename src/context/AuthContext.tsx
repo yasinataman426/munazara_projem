@@ -38,7 +38,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     // Simulate minor network latency for premium feel (spinner etc.)
     await new Promise(resolve => setTimeout(resolve, 800));
-    const result = Database.login(email, password);
+    const result = await Database.login(email, password);
     if (result.success && result.user) {
       setUser(result.user);
     }
@@ -60,7 +60,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ) => {
     setLoading(true);
     await new Promise(resolve => setTimeout(resolve, 800));
-    const result = Database.register(
+    const result = await Database.register(
       username, 
       fullName, 
       phoneNumber, 
@@ -74,7 +74,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
     if (result.success && result.user) {
       // Automatically log in on success
-      Database.login(email, password);
+      await Database.login(email, password);
       setUser(result.user);
     }
     setLoading(false);
