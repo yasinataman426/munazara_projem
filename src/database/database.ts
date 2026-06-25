@@ -71,7 +71,8 @@ export function mapToRoomState(dbRoom: any): RoomState {
     activePoi: dbRoom.active_poi,
     spectatorVotes: dbRoom.spectator_votes || [],
     result: dbRoom.result,
-    participants: dbRoom.participants || {}
+    participants: dbRoom.participants || {},
+    matchMode: dbRoom.timer?.matchMode || 'online'
   };
 }
 
@@ -85,7 +86,10 @@ function mapToDbRoom(room: RoomState): any {
     are_spectator_votes_released: room.areSpectatorVotesReleased,
     prep_started_at: room.prepStartedAt,
     active_speaker: room.activeSpeaker,
-    timer: room.timer,
+    timer: {
+      ...room.timer,
+      matchMode: room.matchMode || 'online'
+    },
     active_poi: room.activePoi,
     spectator_votes: room.spectatorVotes,
     result: room.result,
@@ -283,7 +287,7 @@ export class Database {
   }
 
   // Create a new debate room
-  static async createRoom(roomName: string, motionId: string, customMotionText?: string): Promise<{ success: boolean; message: string; room?: RoomState }> {
+  static async createRoom(roomName: string, motionId: string, customMotionText?: string, matchMode: 'physical' | 'online' = 'online'): Promise<{ success: boolean; message: string; room?: RoomState }> {
     try {
       // Check if active room name already exists
       const { data: existing } = await supabase
@@ -326,7 +330,8 @@ export class Database {
         activePoi: null,
         spectatorVotes: [],
         result: null,
-        participants: {}
+        participants: {},
+        matchMode
       };
 
       const { error } = await supabase

@@ -15,7 +15,8 @@ import {
   HelpCircle,
   TrendingUp,
   FileText,
-  ChevronRight
+  ChevronRight,
+  ArrowLeftRight
 } from 'lucide-react';
 import { JuryPanel } from './JuryPanel';
 import './RoomPage.css';
@@ -46,6 +47,17 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
   const [showPollWidget, setShowPollWidget] = useState(false);
   const [showParticipantsWidget, setShowParticipantsWidget] = useState(false);
   const [showJuryNotepadWidget, setShowJuryNotepadWidget] = useState(false);
+  const [showDrawModal, setShowDrawModal] = useState(false);
+  const [drawMode, setDrawMode] = useState<'individual' | 'team'>('individual');
+  const [indNames, setIndNames] = useState<string[]>(Array(8).fill(''));
+  const [teamNames, setTeamNames] = useState<{ name: string; m1: string; m2: string }[]>([
+    { name: 'Takım 1', m1: '', m2: '' },
+    { name: 'Takım 2', m1: '', m2: '' },
+    { name: 'Takım 3', m1: '', m2: '' },
+    { name: 'Takım 4', m1: '', m2: '' }
+  ]);
+  const [showMotionDetailModal, setShowMotionDetailModal] = useState(false);
+  const [hasSeenMotion, setHasSeenMotion] = useState(false);
 
   // Jury private notepad (saved locally)
   const [draftScores, setDraftScores] = useState<Record<SpeakerRole, string>>(() => {
@@ -121,6 +133,14 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
       if (prepIntervalRef.current) clearInterval(prepIntervalRef.current);
     };
   }, [roomId, onLeave]);
+
+  // Auto open motion details when released
+  useEffect(() => {
+    if (room?.isMotionReleased && !hasSeenMotion) {
+      setShowMotionDetailModal(true);
+      setHasSeenMotion(true);
+    }
+  }, [room?.isMotionReleased, hasSeenMotion]);
 
   // Synchronize timers locally
   useEffect(() => {
@@ -228,6 +248,117 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
   const handleDraftNotesChange = (val: string) => {
     setDraftNotes(val);
     localStorage.setItem(`kursu_draft_notes_${roomId}`, val);
+  };
+
+  const handleAutoFillParticipants = () => {
+    if (!room) return;
+    const debaters = Object.values(room.participants)
+      .filter(p => p.role === 'debater')
+      .map(p => p.username);
+    
+    if (drawMode === 'individual') {
+      const newIndNames = [...indNames];
+      for (let i = 0; i < 8; i++) {
+        newIndNames[i] = debaters[i] || '';
+      }
+      setIndNames(newIndNames);
+    } else {
+      const newTeams = [...teamNames];
+      let pIdx = 0;
+      for (let i = 0; i < 4; i++) {
+        newTeams[i].m1 = debaters[pIdx++] || '';
+        newTeams[i].m2 = debaters[pIdx++] || '';
+      }
+      setTeamNames(newTeams);
+    }
+  };
+
+  const handleDraw = async () => {
+    if (!room) return;
+
+    let assignments: Record<string, SpeakerRole> = {};
+    
+    if (drawMode === 'individual') {
+      const names = indNames.map(n => n.trim()).filter(Boolean);
+      if (names.length < 8) {
+        alert('Lütfen kura için 8 münazır ismi giriniz.');
+        return;
+      }
+      
+      const roles: SpeakerRole[] = ['PM', 'LO', 'DPM', 'DLO', 'MG', 'MO', 'GW', 'OW'];
+      const shuffledRoles = [...roles].sort(() => Math.random() - 0.5);
+      names.forEach((name, i) => {
+        assignments[name] = shuffledRoles[i];
+      });
+    } else {
+      for (let i = 0; i < 4; i++) {
+        if (!teamNames[i].m1.trim() || !teamNames[i].m2.trim()) {
+          alert('Lütfen tüm takımların her iki münazır ismini de doldurunuz.');
+          return;
+        }
+      }
+      
+      const positions: ('OG' | 'OO' | 'CG' | 'CO')[] = ['OG', 'OO', 'CG', 'CO'];
+      const shuffledPositions = [...positions].sort(() => Math.random() - 0.5);
+      
+      teamNames.forEach((team, i) => {
+        const pos = shuffledPositions[i];
+        let r1: SpeakerRole, r2: SpeakerRole;
+        if (pos === 'OG') { r1 = 'PM'; r2 = 'DPM'; }
+        else if (pos === 'OO') { r1 = 'LO'; r2 = 'DLO'; }
+        else if (pos === 'CG') { r1 = 'MG'; r2 = 'GW'; }
+        else { r1 = 'MO'; r2 = 'OW'; }
+        
+        assignments[team.m1.trim()] = r1;
+        assignments[team.m2.trim()] = r2;
+      });
+    }
+
+    const res = await Database.updateRoom(roomId, (r) => {
+      Object.keys(r.participants).forEach(id => {
+        r.participants[id].assignedSpeakerRole = null;
+        if (id.startsWith('virtual_')) {
+          delete r.participants[id];
+        }
+      });
+      
+      Object.entries(assignments).forEach(([name, role]) => {
+        const onlineP = Object.values(r.participants).find(p => p.username === name);
+        if (onlineP) {
+          onlineP.assignedSpeakerRole = role;
+        } else {
+          const virtualId = `virtual_${role.toLowerCase()}`;
+          r.participants[virtualId] = {
+            id: virtualId,
+            username: name,
+            role: 'debater',
+            status: 'open',
+            assignedSpeakerRole: role,
+            isMuted: true,
+            joinedAt: Date.now()
+          };
+        }
+      });
+    });
+
+    if (res.success && res.room) {
+      setRoom(res.room);
+      setShowDrawModal(false);
+    } else {
+      alert(res.message);
+    }
+  };
+
+  const handleSwapRoles = async (role1: SpeakerRole, role2: SpeakerRole) => {
+    if (!room) return;
+    const res = await Database.updateRoom(roomId, (r) => {
+      const p1 = Object.values(r.participants).find(p => p.assignedSpeakerRole === role1);
+      const p2 = Object.values(r.participants).find(p => p.assignedSpeakerRole === role2);
+      
+      if (p1) p1.assignedSpeakerRole = role2;
+      if (p2) p2.assignedSpeakerRole = role1;
+    });
+    if (res.success && res.room) setRoom(res.room);
   };
 
   // Seating
@@ -481,10 +612,12 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            {seatOwner.isMuted ? (
-              <MicOff size={10} className="text-danger" style={{ opacity: 0.6 }} />
-            ) : (
-              <Mic size={10} className="text-success animate-pulse" />
+            {room.matchMode !== 'physical' && (
+              seatOwner.isMuted ? (
+                <MicOff size={10} className="text-danger" style={{ opacity: 0.6 }} />
+              ) : (
+                <Mic size={10} className="text-success animate-pulse" />
+              )
             )}
             {isMe && (
               <button 
@@ -556,19 +689,19 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
             {room.status === 'finished' && 'Bitti'}
           </span>
           <h1 className="room-title-text">{room.roomName}</h1>
-          <p className="room-motion-compact">
+          <p className="room-motion-compact" style={{ cursor: room.isMotionReleased ? 'pointer' : 'default' }} onClick={() => room.isMotionReleased && setShowMotionDetailModal(true)}>
             Konu:{' '}
-            {room.isMotionReleased || isJuryOrAdmin ? (
-              <strong style={{ color: 'var(--text-primary)' }}>{room.motion ? room.motion.text : 'Belirlenmedi'}</strong>
+            {room.isMotionReleased ? (
+              <strong style={{ color: 'var(--text-primary)', textDecoration: 'underline' }} title="Konuyu ve Bilgi Slaytını Göster">{room.motion ? room.motion.text : 'Belirlenmedi'}</strong>
             ) : (
-              <span style={{ color: 'var(--color-warning)', fontStyle: 'italic', fontWeight: 600 }}>Konu açıklanacak...</span>
+              <span style={{ color: 'var(--color-warning)', fontStyle: 'italic', fontWeight: 600 }}>Açıklanacak...</span>
             )}
           </p>
           {!room.isMotionReleased && isJuryOrAdmin && (
             <button 
               className="btn btn-primary"
               onClick={handleRevealMotion}
-              style={{ padding: '2px 8px', fontSize: '0.7rem' }}
+              style={{ padding: '2px 8px', fontSize: '0.7rem', marginLeft: '8px' }}
             >
               Açıkla
             </button>
@@ -576,8 +709,12 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
         </div>
         
         {/* Compact Info Slide */}
-        {(room.isMotionReleased || isJuryOrAdmin) && room.motion?.infoSlide && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(59, 130, 246, 0.05)', padding: '2px 8px', borderRadius: '4px', border: '1px solid rgba(59, 130, 246, 0.15)', maxWidth: '400px' }} title={room.motion.infoSlide}>
+        {room.isMotionReleased && room.motion?.infoSlide && (
+          <div 
+            onClick={() => setShowMotionDetailModal(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(59, 130, 246, 0.05)', padding: '2px 8px', borderRadius: '4px', border: '1px solid rgba(59, 130, 246, 0.15)', maxWidth: '400px', cursor: 'pointer' }} 
+            title="Detaylı bilgi slaytı için tıklayın"
+          >
             <HelpCircle size={12} className="text-primary" style={{ flexShrink: 0 }} />
             <span style={{ fontSize: '0.7rem', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>
               Bilgi Slaytı: {room.motion.infoSlide}
@@ -595,7 +732,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
       </div>
 
       {/* POI Active Notification Banner */}
-      {room.status === 'debate' && room.activePoi && (
+      {room.matchMode !== 'physical' && room.status === 'debate' && room.activePoi && (
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
@@ -645,9 +782,14 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
           </p>
           <div className="hero-controls-row">
             {isJuryOrAdmin ? (
-              <button className="btn btn-primary" onClick={handleStartPrep} style={{ padding: '8px 16px', fontSize: '0.85rem' }}>
-                Hazırlığı Başlat (15 Dk Prep)
-              </button>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button className="btn btn-primary" onClick={handleStartPrep} style={{ padding: '8px 16px', fontSize: '0.85rem' }}>
+                  Hazırlığı Başlat (15 Dk Prep)
+                </button>
+                <button className="btn btn-secondary" onClick={() => setShowDrawModal(true)} style={{ padding: '8px 16px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  🎲 Kura Çekim Paneli
+                </button>
+              </div>
             ) : (
               <span style={{ fontSize: '0.8rem', color: 'var(--color-warning)', fontWeight: 600 }}>
                 Jürinin ortak hazırlık süresini başlatması bekleniyor...
@@ -727,7 +869,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
               </span>
 
               {/* Speaker Audio Waves */}
-              {room.timer.status === 'running' && isActiveSpeakerUnmuted && (
+              {room.matchMode !== 'physical' && room.timer.status === 'running' && isActiveSpeakerUnmuted && (
                 <div className="hero-audio-waves">
                   <div className="hero-wave-bar" />
                   <div className="hero-wave-bar" />
@@ -740,7 +882,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
               {/* Speaker & Jury Controls */}
               <div className="hero-controls-row">
                 {/* Active speaker microphone button */}
-                {room.activeSpeaker === userSpeakerRole && (
+                {room.matchMode !== 'physical' && room.activeSpeaker === userSpeakerRole && (
                   <button 
                     className={`btn ${!room.participants[user.id]?.isMuted ? 'btn-danger' : 'btn-success'}`}
                     onClick={handleToggleMute}
@@ -752,7 +894,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
                 )}
 
                 {/* POI Requester */}
-                {room.timer.status === 'running' && 
+                {room.matchMode !== 'physical' && room.timer.status === 'running' && 
                  localElapsed >= 60 && localElapsed <= 360 && 
                  userSpeakerRole && 
                  SPEAKER_DETAILS[userSpeakerRole].side !== SPEAKER_DETAILS[room.activeSpeaker].side && 
@@ -801,6 +943,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
         isJuryOrAdmin ? (
           <JuryPanel
             roomId={roomId}
+            matchMode={room.matchMode}
             onClose={onLeave}
             onSuccess={(updatedRoom) => setRoom(updatedRoom)}
           />
@@ -844,7 +987,14 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
               ))}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', width: '100%', maxWidth: '600px', marginTop: '12px' }}>
+          <div style={{ 
+            display: room.matchMode === 'physical' ? 'block' : 'grid', 
+            gridTemplateColumns: room.matchMode === 'physical' ? 'none' : '1fr 1fr', 
+            gap: '16px', 
+            width: '100%', 
+            maxWidth: room.matchMode === 'physical' ? '400px' : '600px', 
+            marginTop: '12px' 
+          }}>
             <div>
               <h3 style={{ fontSize: '0.8rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '4px', margin: '0 0 6px 0' }}>Konuşmacı Puanları</h3>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
@@ -859,25 +1009,27 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
               </table>
             </div>
             
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {room.result.juryNotes && (
-                <div style={{ padding: '8px', background: 'rgba(255,255,255,0.01)', borderRadius: '6px', border: '1px solid var(--border-color)', flexGrow: 1 }}>
-                  <span style={{ fontWeight: 600, display: 'block', fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '2px' }}>Jüri Karar Gerekçesi (RFD):</span>
-                  <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', maxHeight: '110px', overflowY: 'auto' }}>{room.result.juryNotes}</p>
-                </div>
-              )}
-              
-              {room.areSpectatorVotesReleased ? (
-                <div style={{ padding: '8px', background: 'rgba(255,255,255,0.01)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                  <span style={{ fontWeight: 600, display: 'block', fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '4px' }}>Seyirci Anketi:</span>
-                  {renderPollPercentages()}
-                </div>
-              ) : (
-                <div style={{ padding: '6px', background: 'rgba(255,255,255,0.01)', borderRadius: '6px', border: '1px dashed var(--border-color)', fontSize: '0.65rem', color: 'var(--text-muted)', textAlign: 'center' }}>
-                  Seyirci anketi sonuçları jüri kararıyla gizlenmiştir.
-                </div>
-              )}
-            </div>
+            {room.matchMode !== 'physical' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {room.result.juryNotes && (
+                  <div style={{ padding: '8px', background: 'rgba(255,255,255,0.01)', borderRadius: '6px', border: '1px solid var(--border-color)', flexGrow: 1 }}>
+                    <span style={{ fontWeight: 600, display: 'block', fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '2px' }}>Jüri Karar Gerekçesi (RFD):</span>
+                    <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', maxHeight: '110px', overflowY: 'auto' }}>{room.result.juryNotes}</p>
+                  </div>
+                )}
+                
+                {room.areSpectatorVotesReleased ? (
+                  <div style={{ padding: '8px', background: 'rgba(255,255,255,0.01)', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                    <span style={{ fontWeight: 600, display: 'block', fontSize: '0.65rem', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '4px' }}>Seyirci Anketi:</span>
+                    {renderPollPercentages()}
+                  </div>
+                ) : (
+                  <div style={{ padding: '6px', background: 'rgba(255,255,255,0.01)', borderRadius: '6px', border: '1px dashed var(--border-color)', fontSize: '0.65rem', color: 'var(--text-muted)', textAlign: 'center' }}>
+                    Seyirci anketi sonuçları jüri kararıyla gizlenmiştir.
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -890,8 +1042,40 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
               <span className="slim-bench-team-title" style={{ color: 'var(--color-primary)' }}>Hükümet Açılış</span>
               <span className="slim-bench-team-code">HA</span>
             </div>
-            <div className="slim-bench-seats">
+            <div className="slim-bench-seats" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '8px' }}>
               {renderSeat('PM')}
+              {(room.status === 'lobby' || room.status === 'preparation') && isJuryOrAdmin && (
+                <button
+                  type="button"
+                  onClick={() => handleSwapRoles('PM', 'DPM')}
+                  className="swap-btn"
+                  title="Rolleri Değiştir"
+                  style={{
+                    position: 'absolute',
+                    left: '50%',
+                    top: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    zIndex: 10,
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '50%',
+                    width: '24px',
+                    height: '24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    color: 'var(--text-secondary)',
+                    opacity: 0.6,
+                    backdropFilter: 'blur(4px)',
+                    transition: 'opacity 0.2s, background-color 0.2s'
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)'; }}
+                >
+                  <ArrowLeftRight size={12} />
+                </button>
+              )}
               {renderSeat('DPM')}
             </div>
           </div>
@@ -901,8 +1085,40 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
               <span className="slim-bench-team-title" style={{ color: 'var(--color-secondary)' }}>Muhalefet Açılış</span>
               <span className="slim-bench-team-code">MA</span>
             </div>
-            <div className="slim-bench-seats">
+            <div className="slim-bench-seats" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '8px' }}>
               {renderSeat('LO')}
+              {(room.status === 'lobby' || room.status === 'preparation') && isJuryOrAdmin && (
+                <button
+                  type="button"
+                  onClick={() => handleSwapRoles('LO', 'DLO')}
+                  className="swap-btn"
+                  title="Rolleri Değiştir"
+                  style={{
+                    position: 'absolute',
+                    left: '50%',
+                    top: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    zIndex: 10,
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '50%',
+                    width: '24px',
+                    height: '24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    color: 'var(--text-secondary)',
+                    opacity: 0.6,
+                    backdropFilter: 'blur(4px)',
+                    transition: 'opacity 0.2s, background-color 0.2s'
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)'; }}
+                >
+                  <ArrowLeftRight size={12} />
+                </button>
+              )}
               {renderSeat('DLO')}
             </div>
           </div>
@@ -912,8 +1128,40 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
               <span className="slim-bench-team-title" style={{ color: 'var(--color-primary)' }}>Hükümet Kapanış</span>
               <span className="slim-bench-team-code">HK</span>
             </div>
-            <div className="slim-bench-seats">
+            <div className="slim-bench-seats" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '8px' }}>
               {renderSeat('MG')}
+              {(room.status === 'lobby' || room.status === 'preparation') && isJuryOrAdmin && (
+                <button
+                  type="button"
+                  onClick={() => handleSwapRoles('MG', 'GW')}
+                  className="swap-btn"
+                  title="Rolleri Değiştir"
+                  style={{
+                    position: 'absolute',
+                    left: '50%',
+                    top: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    zIndex: 10,
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '50%',
+                    width: '24px',
+                    height: '24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    color: 'var(--text-secondary)',
+                    opacity: 0.6,
+                    backdropFilter: 'blur(4px)',
+                    transition: 'opacity 0.2s, background-color 0.2s'
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)'; }}
+                >
+                  <ArrowLeftRight size={12} />
+                </button>
+              )}
               {renderSeat('GW')}
             </div>
           </div>
@@ -923,8 +1171,40 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
               <span className="slim-bench-team-title" style={{ color: 'var(--color-secondary)' }}>Muhalefet Kapanış</span>
               <span className="slim-bench-team-code">MK</span>
             </div>
-            <div className="slim-bench-seats">
+            <div className="slim-bench-seats" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '8px' }}>
               {renderSeat('MO')}
+              {(room.status === 'lobby' || room.status === 'preparation') && isJuryOrAdmin && (
+                <button
+                  type="button"
+                  onClick={() => handleSwapRoles('MO', 'OW')}
+                  className="swap-btn"
+                  title="Rolleri Değiştir"
+                  style={{
+                    position: 'absolute',
+                    left: '50%',
+                    top: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    zIndex: 10,
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '50%',
+                    width: '24px',
+                    height: '24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    color: 'var(--text-secondary)',
+                    opacity: 0.6,
+                    backdropFilter: 'blur(4px)',
+                    transition: 'opacity 0.2s, background-color 0.2s'
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)'; }}
+                >
+                  <ArrowLeftRight size={12} />
+                </button>
+              )}
               {renderSeat('OW')}
             </div>
           </div>
@@ -934,46 +1214,50 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
       {/* 4. Floating Glassmorphic Panels / Toggles */}
       
       {/* Salondakiler Toggle & Panel */}
-      <div className="floating-widget-toggle widget-top-right">
-        <button 
-          className={`floating-widget-btn ${showParticipantsWidget ? 'active' : ''}`}
-          onClick={() => setShowParticipantsWidget(!showParticipantsWidget)}
-          title="Salondakiler"
-        >
-          <UserIcon size={18} />
-        </button>
-      </div>
-      {showParticipantsWidget && (
-        <div className="floating-overlay-card card-top-right">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>Salondakiler ({Object.keys(room.participants).length + 1})</span>
-            <button className="btn" style={{ padding: 0, background: 'none', border: 'none', color: 'var(--text-muted)' }} onClick={() => setShowParticipantsWidget(false)}>
-              <X size={14} />
+      {room.matchMode !== 'physical' && (
+        <>
+          <div className="floating-widget-toggle widget-top-right">
+            <button 
+              className={`floating-widget-btn ${showParticipantsWidget ? 'active' : ''}`}
+              onClick={() => setShowParticipantsWidget(!showParticipantsWidget)}
+              title="Salondakiler"
+            >
+              <UserIcon size={18} />
             </button>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 6px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.05)' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{user.username} (Siz)</span>
-              <span className={`badge badge-${user.role}`} style={{ fontSize: '0.5rem', padding: '1px 4px' }}>
-                {user.role === 'admin' ? 'Yönetici' : user.role === 'jury' ? 'Jüri' : user.role === 'debater' ? 'Münazır' : 'Seyirci'}
-              </span>
-            </div>
-            {Object.values(room.participants)
-              .filter(p => p.id !== user.id)
-              .map(p => (
-                <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 6px', border: '1px solid var(--border-color)', borderRadius: '4px' }}>
-                  <span style={{ fontSize: '0.75rem' }}>{p.username}</span>
-                  <span className={`badge badge-${p.role}`} style={{ fontSize: '0.5rem', padding: '1px 4px' }}>
-                    {p.role === 'admin' ? 'Yönetici' : p.role === 'jury' ? 'Jüri' : p.role === 'debater' ? 'Münazır' : 'Seyirci'}
+          {showParticipantsWidget && (
+            <div className="floating-overlay-card card-top-right">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>Salondakiler ({Object.keys(room.participants).length + 1})</span>
+                <button className="btn" style={{ padding: 0, background: 'none', border: 'none', color: 'var(--text-muted)' }} onClick={() => setShowParticipantsWidget(false)}>
+                  <X size={14} />
+                </button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflowY: 'auto' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 6px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{user.username} (Siz)</span>
+                  <span className={`badge badge-${user.role}`} style={{ fontSize: '0.5rem', padding: '1px 4px' }}>
+                    {user.role === 'admin' ? 'Yönetici' : user.role === 'jury' ? 'Jüri' : user.role === 'debater' ? 'Münazır' : 'Seyirci'}
                   </span>
                 </div>
-              ))}
-          </div>
-        </div>
+                {Object.values(room.participants)
+                  .filter(p => p.id !== user.id)
+                  .map(p => (
+                    <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 6px', border: '1px solid var(--border-color)', borderRadius: '4px' }}>
+                      <span style={{ fontSize: '0.75rem' }}>{p.username}</span>
+                      <span className={`badge badge-${p.role}`} style={{ fontSize: '0.5rem', padding: '1px 4px' }}>
+                        {p.role === 'admin' ? 'Yönetici' : p.role === 'jury' ? 'Jüri' : p.role === 'debater' ? 'Münazır' : 'Seyirci'}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* Seyirci Anketi Toggle & Panel */}
-      {room.status !== 'finished' && (
+      {room.matchMode !== 'physical' && room.status !== 'finished' && (
         <>
           <div className="floating-widget-toggle widget-bottom-right">
             <button 
@@ -1039,7 +1323,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
       )}
 
       {/* Jüri Taslak Not Defteri Toggle & Panel */}
-      {isJuryOrAdmin && room.status === 'debate' && (
+      {room.matchMode !== 'physical' && isJuryOrAdmin && room.status === 'debate' && (
         <>
           <div className="floating-widget-toggle widget-bottom-left">
             <button 
@@ -1113,6 +1397,181 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
             </div>
           )}
         </>
+      )}      {/* Modal: Kura Çekim Paneli */}
+      {showDrawModal && (
+        <div className="modal-overlay" style={{ zIndex: 100 }}>
+          <div className="modal-content glass-panel animate-fade-in" style={{ maxWidth: '600px', width: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
+              <h2 style={{ margin: 0, fontSize: '1.4rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>🎲</span> Kura Çekim Paneli
+              </h2>
+              <button className="password-toggle-btn" style={{ position: 'static' }} onClick={() => setShowDrawModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Toggle Kura Modu */}
+            <div className="auth-tabs" style={{ marginBottom: '20px' }}>
+              <button 
+                type="button"
+                className={`auth-tab ${drawMode === 'individual' ? 'active' : ''}`}
+                onClick={() => setDrawMode('individual')}
+                style={{ flex: 1 }}
+              >
+                Bireysel Kura
+              </button>
+              <button 
+                type="button"
+                className={`auth-tab ${drawMode === 'team' ? 'active' : ''}`}
+                onClick={() => setDrawMode('team')}
+                style={{ flex: 1 }}
+              >
+                Takım Bazlı Kura
+              </button>
+            </div>
+
+            {/* Auto Fill Button */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                {drawMode === 'individual' ? '8 Münazır giriniz:' : '4 Takım (toplam 8 Münazır) giriniz:'}
+              </span>
+              <button 
+                type="button" 
+                className="btn btn-secondary" 
+                style={{ padding: '4px 8px', fontSize: '0.75rem' }}
+                onClick={handleAutoFillParticipants}
+              >
+                Odaki Münazırları Doldur
+              </button>
+            </div>
+
+            {/* Form Fields */}
+            {drawMode === 'individual' ? (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                {indNames.map((name, i) => (
+                  <div key={i} className="input-group" style={{ margin: 0 }}>
+                    <label className="input-label" htmlFor={`ind-name-${i}`} style={{ fontSize: '0.65rem' }}>{i + 1}. MÜNAZIR</label>
+                    <input 
+                      id={`ind-name-${i}`}
+                      type="text" 
+                      className="input-field" 
+                      placeholder={`İsim ${i + 1}`}
+                      value={name}
+                      onChange={(e) => {
+                        const copy = [...indNames];
+                        copy[i] = e.target.value;
+                        setIndNames(copy);
+                      }}
+                      style={{ padding: '8px' }}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {teamNames.map((team, i) => (
+                  <div key={i} className="glass-panel" style={{ padding: '12px', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'rgba(255,255,255,0.01)' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--color-primary)', display: 'block', marginBottom: '8px' }}>
+                      Takım {i + 1}
+                    </span>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      <div className="input-group" style={{ margin: 0 }}>
+                        <label className="input-label" htmlFor={`team-m1-${i}`} style={{ fontSize: '0.6rem' }}>1. MÜNAZIR</label>
+                        <input 
+                          id={`team-m1-${i}`}
+                          type="text" 
+                          className="input-field" 
+                          placeholder="Münazır A"
+                          value={team.m1}
+                          onChange={(e) => {
+                            const copy = [...teamNames];
+                            copy[i].m1 = e.target.value;
+                            setTeamNames(copy);
+                          }}
+                          style={{ padding: '8px' }}
+                        />
+                      </div>
+                      <div className="input-group" style={{ margin: 0 }}>
+                        <label className="input-label" htmlFor={`team-m2-${i}`} style={{ fontSize: '0.6rem' }}>2. MÜNAZIR</label>
+                        <input 
+                          id={`team-m2-${i}`}
+                          type="text" 
+                          className="input-field" 
+                          placeholder="Münazır B"
+                          value={team.m2}
+                          onChange={(e) => {
+                            const copy = [...teamNames];
+                            copy[i].m2 = e.target.value;
+                            setTeamNames(copy);
+                          }}
+                          style={{ padding: '8px' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setShowDrawModal(false)}>
+                İptal
+              </button>
+              <button type="button" className="btn btn-primary" onClick={handleDraw} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                🎲 Kura Çek ve Dağıt
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+      {/* Modal: Konu ve Bilgi Slaytı Detayı */}
+      {showMotionDetailModal && room?.motion && (
+        <div className="modal-overlay" style={{ zIndex: 110 }}>
+          <div className="modal-content glass-panel animate-fade-in" style={{ maxWidth: '500px', width: '90%', textAlign: 'center', padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '-10px' }}>
+              <button 
+                type="button"
+                className="password-toggle-btn" 
+                style={{ position: 'static' }} 
+                onClick={() => setShowMotionDetailModal(false)}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            
+            <h2 style={{ fontSize: '1.2rem', color: 'var(--color-warning)', marginBottom: '16px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Münazara Konusu Açıklandı!
+            </h2>
+            
+            <div style={{ padding: '20px', background: 'rgba(255,255,255,0.02)', borderRadius: '10px', border: '1px solid var(--border-color)', marginBottom: '20px' }}>
+              <p style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, lineHeight: '1.5', color: 'var(--text-primary)' }}>
+                {room.motion.text}
+              </p>
+            </div>
+
+            {room.motion.infoSlide && (
+              <div style={{ padding: '16px', background: 'rgba(59, 130, 246, 0.05)', borderRadius: '10px', border: '1px solid rgba(59, 130, 246, 0.15)', textAlign: 'left', marginBottom: '20px' }}>
+                <span style={{ fontWeight: 600, display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '6px', color: 'var(--color-primary)' }}>
+                  Bilgi Slaytı (Info Slide)
+                </span>
+                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
+                  {room.motion.infoSlide}
+                </p>
+              </div>
+            )}
+
+            <button 
+              type="button" 
+              className="btn btn-primary" 
+              onClick={() => setShowMotionDetailModal(false)}
+              style={{ padding: '10px 24px', fontSize: '0.9rem', fontWeight: 600, width: '100%' }}
+            >
+              Kapat
+            </button>
+          </div>
+        </div>
       )}
 
 

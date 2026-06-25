@@ -8,6 +8,7 @@ interface JuryPanelProps {
   roomId: string;
   onClose: () => void;
   onSuccess: (updatedRoom: RoomState) => void;
+  matchMode?: 'physical' | 'online';
 }
 
 const SPEAKER_ORDER: SpeakerRole[] = ['PM', 'LO', 'DPM', 'DLO', 'MG', 'MO', 'GW', 'OW'];
@@ -32,7 +33,7 @@ const TEAM_CODES: Record<BPTeam, string> = {
   'Closing Opposition': 'CO (Muhalefet Kapanış)'
 };
 
-export const JuryPanel: React.FC<JuryPanelProps> = ({ roomId, onClose, onSuccess }) => {
+export const JuryPanel: React.FC<JuryPanelProps> = ({ roomId, onClose, onSuccess, matchMode }) => {
   const { user } = useAuth();
   
   // 1. Authorization check
@@ -186,18 +187,18 @@ export const JuryPanel: React.FC<JuryPanelProps> = ({ roomId, onClose, onSuccess
 
     setIsSubmitting(true);
 
+    const isPhysical = matchMode === 'physical';
     const results: DebateResult = {
       rankings: rankings as any,
       speakerPoints: pointsMap,
-      juryNotes,
+      juryNotes: isPhysical ? '' : juryNotes,
       submittedAt: new Date().toISOString()
     };
 
     try {
-      const res = await Database.updateDebateResult(roomId, results, releaseVotes);
+      const res = await Database.updateDebateResult(roomId, results, isPhysical ? true : releaseVotes);
       if (res.success && res.room) {
         onSuccess(res.room);
-        onClose();
       } else {
         setErrorMsg(res.message || 'Puanlama kaydedilirken bir veritabanı hatası oluştu.');
       }
@@ -315,33 +316,37 @@ export const JuryPanel: React.FC<JuryPanelProps> = ({ roomId, onClose, onSuccess
         </div>
 
         {/* Jury notes */}
-        <div className="input-group">
-          <label className="input-label" htmlFor="jury-notes" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <FileText size={14} /> JÜRİ GEREKÇELİ KARAR NOTLARI
-          </label>
-          <textarea
-            id="jury-notes"
-            className="input-field"
-            style={{ minHeight: '90px', resize: 'vertical' }}
-            placeholder="Maçın sonucunun gerekçeli kararı, argüman analizleri ve jüri geri bildirimleri..."
-            value={juryNotes}
-            onChange={(e) => setJuryNotes(e.target.value)}
-          />
-        </div>
+        {matchMode !== 'physical' && (
+          <div className="input-group">
+            <label className="input-label" htmlFor="jury-notes" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <FileText size={14} /> JÜRİ GEREKÇELİ KARAR NOTLARI
+            </label>
+            <textarea
+              id="jury-notes"
+              className="input-field"
+              style={{ minHeight: '90px', resize: 'vertical' }}
+              placeholder="Maçın sonucunun gerekçeli kararı, argüman analizleri ve jüri geri bildirimleri..."
+              value={juryNotes}
+              onChange={(e) => setJuryNotes(e.target.value)}
+            />
+          </div>
+        )}
 
         {/* Release Spectator votes Checkbox */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <input
-            id="release-votes"
-            type="checkbox"
-            style={{ width: '16px', height: '16px', cursor: 'pointer' }}
-            checked={releaseVotes}
-            onChange={(e) => setReleaseVotes(e.target.checked)}
-          />
-          <label htmlFor="release-votes" style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', cursor: 'pointer' }}>
-            Seyirci oylarını ve sonuçları salona anında yayınla
-          </label>
-        </div>
+        {matchMode !== 'physical' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <input
+              id="release-votes"
+              type="checkbox"
+              style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+              checked={releaseVotes}
+              onChange={(e) => setReleaseVotes(e.target.checked)}
+            />
+            <label htmlFor="release-votes" style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+              Seyirci oylarını ve sonuçları salona anında yayınla
+            </label>
+          </div>
+        )}
 
         {/* Form controls buttons */}
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
@@ -349,9 +354,9 @@ export const JuryPanel: React.FC<JuryPanelProps> = ({ roomId, onClose, onSuccess
             İptal
           </button>
           <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
-            {isSubmitting ? 'Kaydediliyor...' : (
+            {isSubmitting ? (matchMode === 'physical' ? 'Yayınlanıyor...' : 'Kaydediliyor...') : (
               <>
-                <Check size={16} /> Puanlamayı Kaydet ve Bitir
+                <Check size={16} /> {matchMode === 'physical' ? 'Sıralamayı Yayınla' : 'Puanlamayı Kaydet ve Bitir'}
               </>
             )}
           </button>

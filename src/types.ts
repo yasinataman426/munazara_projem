@@ -102,6 +102,7 @@ export interface RoomState {
   activePoi: POIRequest | null;
   spectatorVotes: SpectatorVote[];
   result: DebateResult | null;
+  matchMode?: 'physical' | 'online';
   // Dynamic list of active participants inside the room with their roles
   participants: {
     [userId: string]: {

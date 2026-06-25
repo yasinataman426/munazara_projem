@@ -43,6 +43,7 @@ export const LobbyPage: React.FC = () => {
   const [newRoomName, setNewRoomName] = useState('');
   const [selectedMotionId, setSelectedMotionId] = useState('');
   const [customMotionText, setCustomMotionText] = useState('');
+  const [matchMode, setMatchMode] = useState<'physical' | 'online'>('online');
   const [roomError, setRoomError] = useState<string | null>(null);
 
   // Form states for adding a motion
@@ -106,12 +107,13 @@ export const LobbyPage: React.FC = () => {
       return;
     }
 
-    const res = await Database.createRoom(newRoomName, selectedMotionId, customMotionText);
+    const res = await Database.createRoom(newRoomName, selectedMotionId, customMotionText, matchMode);
     if (res.success) {
       // Clear forms
       setNewRoomName('');
       setSelectedMotionId('');
       setCustomMotionText('');
+      setMatchMode('online');
       setRoomError(null);
       setShowCreateRoomModal(false);
       loadData();
@@ -378,6 +380,9 @@ export const LobbyPage: React.FC = () => {
                             <span className={`badge ${getStatusBadgeClass(room.status)}`} style={{ fontSize: '0.6rem', padding: '2px 8px' }}>
                               {getStatusLabel(room.status)}
                             </span>
+                            <span className={`badge ${room.matchMode === 'physical' ? 'badge-jury' : 'badge-debater'}`} style={{ fontSize: '0.6rem', padding: '2px 8px', textTransform: 'uppercase' }}>
+                              {room.matchMode === 'physical' ? 'Fiziksel' : 'Online'}
+                            </span>
                           </div>
                           <div className="room-meta" style={{ marginTop: '8px' }}>
                             <span className="motion-tag" style={{ maxWidth: '350px' }}>
@@ -555,6 +560,33 @@ export const LobbyPage: React.FC = () => {
                   onChange={(e) => setNewRoomName(e.target.value)}
                   required
                 />
+              </div>
+
+              <div className="input-group">
+                <label className="input-label">MAÇ MODU</label>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
+                  <button
+                    type="button"
+                    className={`btn ${matchMode === 'physical' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ flex: 1, padding: '10px', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                    onClick={() => setMatchMode('physical')}
+                  >
+                    <span>Fiziksel Maç</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn ${matchMode === 'online' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ flex: 1, padding: '10px', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                    onClick={() => setMatchMode('online')}
+                  >
+                    <span>Online Maç</span>
+                  </button>
+                </div>
+                <p style={{ margin: '6px 0 0 0', fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+                  {matchMode === 'physical' 
+                    ? 'Offline/Lokal mod: Ses/görüntü widgetları ve dijital not defteri devre dışı bırakılır.' 
+                    : 'Online/Canlı mod: Sesli iletişim, POI ve dijital not defteri özellikleri aktif kalır.'}
+                </p>
               </div>
 
               <div className="input-group">
