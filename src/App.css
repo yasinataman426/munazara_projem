@@ -170,9 +170,16 @@
 
 .lobby-grid {
   display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 32px;
+  grid-template-columns: 1fr;
+  gap: 20px;
   align-items: start;
+}
+
+@media (min-width: 768px) {
+  .lobby-grid {
+    grid-template-columns: 2fr 1fr;
+    gap: 32px;
+  }
 }
 
 .lobby-panel {
@@ -308,3 +315,131 @@
   width: 100%;
   animation: fadeIn 0.4s ease;
 }
+
+/* ==========================================================================
+   MOBILE RESPONSIVENESS AND UTILITIES
+   ========================================================================== */
+
+/* Main content padding wrapper */
+.main-content-padding {
+  padding: 16px;
+}
+@media (min-width: 768px) {
+  .main-content-padding {
+    padding: 30px 24px;
+  }
+}
+
+/* Mobile-first Tailwind utilities */
+.w-full {
+  width: 100%;
+}
+.overflow-hidden {
+  overflow: hidden;
+}
+.px-4 {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+.grid-cols-1 {
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+
+@media (min-width: 768px) {
+  .md\:w-full {
+    width: 100%;
+  }
+  .md\:px-0 {
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .md\:px-6 {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+  .md\:grid-cols-2-1 {
+    grid-template-columns: 2fr 1fr;
+  }
+}
+
+/* Mobile responsive layout overrides for components */
+@media (max-width: 767px) {
+  /* Lobi panel padding */
+  .lobby-panel {
+    padding: 16px;
+  }
+
+  /* Room card wrapping and layout adjustments */
+  .room-card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+    padding: 16px;
+  }
+  .room-info {
+    margin-right: 0 !important;
+  }
+  .room-meta {
+    flex-wrap: wrap;
+    gap: 8px !important;
+  }
+  .motion-tag {
+    max-width: 100% !important;
+    white-space: normal;
+    text-overflow: unset;
+  }
+
+  /* Room card actions container to stretch/wrap nicely */
+  .room-card-actions {
+    width: 100% !important;
+    justify-content: stretch !important;
+  }
+  .room-card-actions .btn {
+    flex: 1;
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Auth tabs scaling */
+  .auth-tabs {
+    width: 100% !important;
+  }
+  .auth-tab {
+    padding: 8px 10px;
+    font-size: 0.85rem;
+  }
+
+  /* Header layout wrap for mobile viewports */
+  .header-content {
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .logo-text {
+    order: 1;
+  }
+  .header-user-info {
+    order: 2;
+    gap: 8px !important;
+  }
+  .navbar-links {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+    border-top: 1px solid var(--border-color);
+    padding-top: 8px;
+    margin-top: 4px;
+    gap: 4px !important;
+  }
+  .navbar-links .btn {
+    padding: 6px 12px !important;
+    font-size: 0.8rem !important;
+  }
+  .navbar-username {
+    display: none;
+  }
+  .navbar-logout-text {
+    display: none;
+  }
+}
+

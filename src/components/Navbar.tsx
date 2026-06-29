@@ -58,7 +58,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPage, setCurrentPage }) =
 
   return (
     <header className="main-header" style={{ width: '100%' }}>
-      <div className="container header-content" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="container header-content">
         {/* Left Side: Logo */}
         <div 
           className="logo-text" 
@@ -70,7 +70,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPage, setCurrentPage }) =
         </div>
 
         {/* Center: Navigation Links */}
-        <nav style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <nav className="navbar-links" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button
             onClick={() => setCurrentPage('lobby')}
             className="btn"
@@ -160,7 +160,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPage, setCurrentPage }) =
             {user.role === 'admin' && (
               <Shield size={12} style={{ color: 'var(--color-secondary)' }} />
             )}
-            <span style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 500 }}>
+            <span className="navbar-username" style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 500 }}>
               {user.username}
             </span>
           </div>
@@ -170,7 +170,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPage, setCurrentPage }) =
             style={{ padding: '6px 12px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}
           >
             <LogOut size={14} />
-            Çıkış Yap
+            <span className="navbar-logout-text">Çıkış Yap</span>
           </button>
         </div>
       </div>

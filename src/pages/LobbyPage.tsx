@@ -296,10 +296,10 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ selectedRoomId, setSelecte
   }
 
   return (
-    <div className="app-container">
+    <div className="app-container w-full overflow-hidden">
       {/* Main Content */}
-      <main className="container" style={{ flexGrow: 1, padding: '30px 24px' }}>
-        <div className="lobby-grid">
+      <main className="container w-full px-4 md:px-6 main-content-padding" style={{ flexGrow: 1 }}>
+        <div className="lobby-grid grid-cols-1 md:grid-cols-2-1 w-full overflow-hidden px-4 md:px-0">
             
             {/* Left panel: Active Rooms & Motion Archive */}
             <div className="glass-panel lobby-panel" style={{ display: 'flex', flexDirection: 'column' }}>
@@ -433,7 +433,7 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ selectedRoomId, setSelecte
                               </span>
                             </div>
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div className="room-card-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             {user.role === 'admin' && (
                               <button 
                                 className="btn btn-danger"
@@ -528,7 +528,7 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ selectedRoomId, setSelecte
                   {renderActiveAvatar()}
                   <div>
                     <h3 style={{ margin: 0, fontSize: '1.2rem' }}>{user.fullName}</h3>
-                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>@{user.username} • {user.email}</span>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', display: 'block', wordBreak: 'break-all' }}>@{user.username} • {user.email}</span>
                   </div>
                 </div>
 
