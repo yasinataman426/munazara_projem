@@ -8,9 +8,9 @@ import {
   EyeOff,
   Loader2, 
   AlertCircle,
-  Sparkles,
   ArrowRight
 } from 'lucide-react';
+import { RostrumLogo } from '../components/RostrumLogo';
 
 export const AuthPage: React.FC = () => {
   const { login, register } = useAuth();
@@ -165,8 +165,8 @@ export const AuthPage: React.FC = () => {
       <div className="auth-card glass-panel pulse-border">
         
         <div className="auth-header">
-          <div className="logo-text" style={{ fontSize: '2.2rem', justifyContent: 'center', marginBottom: '16px' }}>
-            <Sparkles size={28} style={{ color: '#60a5fa' }} />
+          <div className="logo-text" style={{ fontSize: '2.2rem', justifyContent: 'center', marginBottom: '16px', gap: '12px' }}>
+            <RostrumLogo size={40} />
             KÜRSÜ
           </div>
           <p className="auth-subtitle">

@@ -1,6 +1,7 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { LogOut, Shield, LayoutDashboard, Home, User as UserIcon } from 'lucide-react';
+import { RostrumLogo } from './RostrumLogo';
 
 interface NavbarProps {
   currentPage: 'lobby' | 'profile' | 'admin';
@@ -64,6 +65,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPage, setCurrentPage }) =
           onClick={() => setCurrentPage('lobby')} 
           style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
         >
+          <RostrumLogo size={22} />
           <span>KÜRSÜ</span>
         </div>
 
