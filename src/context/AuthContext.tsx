@@ -5,7 +5,7 @@ import { Database } from '../database/database';
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (email: string, password?: string) => Promise<{ success: boolean; message: string }>;
+  login: (email: string, password?: string) => Promise<{ success: boolean; message: string; code?: string }>;
   register: (
     username: string, 
     fullName: string, 
@@ -17,7 +17,7 @@ interface AuthContextType {
     school: string, 
     role: UserRole, 
     status: DebaterStatus
-  ) => Promise<{ success: boolean; message: string }>;
+  ) => Promise<{ success: boolean; message: string; code?: string }>;
   logout: () => void;
 }
 
@@ -43,7 +43,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(result.user);
     }
     setLoading(false);
-    return { success: result.success, message: result.message };
+    return { success: result.success, message: result.message, code: result.code };
   };
 
   const register = async (
@@ -78,7 +78,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(result.user);
     }
     setLoading(false);
-    return { success: result.success, message: result.message };
+    return { success: result.success, message: result.message, code: result.code };
   };
 
   const logout = () => {

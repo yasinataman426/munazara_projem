@@ -38,7 +38,8 @@
       active_poi jsonb,
       spectator_votes jsonb default '[]'::jsonb not null,
       result jsonb,
-      participants jsonb default '{}'::jsonb not null
+      participants jsonb default '{}'::jsonb not null,
+      created_at timestamp with time zone default timezone('utc'::text, now()) not null
   );
 
 
@@ -113,5 +114,9 @@
 alter table users disable row level security;
 alter table motions disable row level security;
 alter table rooms disable row level security;
+
+-- 6. Add created_at migration for existing database schemas
+ALTER TABLE rooms ADD COLUMN IF NOT EXISTS created_at timestamp with time zone default timezone('utc'::text, now()) not null;
+
 
 

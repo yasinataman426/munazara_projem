@@ -15,6 +15,8 @@ export interface User {
   role: UserRole;
   status: DebaterStatus;
   createdAt: string;
+  isVerified?: boolean;
+  avatarUrl?: string;
 }
 
 export interface Motion {

@@ -16,7 +16,8 @@ import {
   TrendingUp,
   FileText,
   ChevronRight,
-  ArrowLeftRight
+  ArrowLeftRight,
+  Loader2
 } from 'lucide-react';
 import { JuryPanel } from './JuryPanel';
 import './RoomPage.css';
@@ -211,7 +212,21 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
     };
   }, [room, roomId, isJuryOrAdmin]);
 
-  if (!user || !room) return null;
+  if (!user || !room) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        flexDirection: 'column', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        minHeight: '80vh', 
+        gap: '16px' 
+      }}>
+        <Loader2 className="animate-spin" size={36} style={{ color: 'var(--color-primary)' }} />
+        <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Oda bilgileri yükleniyor...</span>
+      </div>
+    );
+  }
 
   // Determine user seat/role
   const userSeat = Object.entries(room.participants).find(([_, p]) => p.id === user.id && p.assignedSpeakerRole);

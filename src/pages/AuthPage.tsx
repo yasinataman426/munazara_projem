@@ -2,10 +2,9 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import type { UserRole, DebaterStatus } from '../types';
 import { 
-  Shield, 
   Scale, 
   Mic, 
-  Eye, 
+  Eye,
   EyeOff,
   Loader2, 
   AlertCircle,
@@ -38,6 +37,36 @@ export const AuthPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Inline validation errors
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
+
+  const validateEmail = (val: string) => {
+    if (!val) {
+      setEmailError(null);
+      return;
+    }
+    const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!regex.test(val)) {
+      setEmailError('Geçersiz e-posta formatı.');
+    } else {
+      setEmailError(null);
+    }
+  };
+
+  const validateFullName = (val: string) => {
+    if (!val) {
+      setNameError(null);
+      return;
+    }
+    const trimmed = val.trim();
+    if (!trimmed.includes(' ') || trimmed.split(' ').filter(Boolean).length < 2) {
+      setNameError('Lütfen ad ve soyadınızı aralarında boşluk olacak şekilde girin.');
+    } else {
+      setNameError(null);
+    }
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) {
@@ -54,7 +83,13 @@ export const AuthPage: React.FC = () => {
     try {
       const res = await login(email, loginPassword);
       if (!res.success) {
-        setError(res.message);
+        if (res.code === 'auth/user-not-found' || res.message.includes('bulunamadı')) {
+          setError('Bu e-posta adresi ile kayıtlı bir kullanıcı bulunamadı.');
+        } else if (res.code === 'auth/wrong-password' || res.message.includes('şifre') || res.message.includes('Hatalı')) {
+          setError('Girdiğiniz şifre hatalı, lütfen tekrar deneyin.');
+        } else {
+          setError(res.message);
+        }
       }
     } catch {
       setError('Giriş yapılırken beklenmedik bir hata oluştu.');
@@ -76,6 +111,11 @@ export const AuthPage: React.FC = () => {
       return;
     }
 
+    if (nameError || emailError) {
+      setError('Lütfen formdaki hataları düzelterek tekrar deneyin.');
+      return;
+    }
+
     setError(null);
     setIsLoading(true);
     try {
@@ -92,7 +132,11 @@ export const AuthPage: React.FC = () => {
         selectedRole === 'debater' ? debaterStatus : null
       );
       if (!res.success) {
-        setError(res.message);
+        if (res.code === 'auth/email-already-in-use' || res.message.includes('kullanımda') || res.message.includes('kayıtlı')) {
+          setError('Bu e-posta adresi zaten kullanımda, lütfen giriş yapmayı deneyin.');
+        } else {
+          setError(res.message);
+        }
       }
     } catch {
       setError('Kayıt oluşturulurken beklenmedik bir hata oluştu.');
@@ -113,18 +157,6 @@ export const AuthPage: React.FC = () => {
       title: 'Jüri',
       desc: 'Maç odasını yönetir, süreyi kontrol eder ve sonuçları girer.',
       icon: <Scale className="role-card-icon" size={24} />
-    },
-    {
-      role: 'spectator',
-      title: 'Seyirci',
-      desc: 'Maçı canlı izler, anketlere katılır. Sesi zorunlu kapalıdır.',
-      icon: <Eye className="role-card-icon" size={24} />
-    },
-    {
-      role: 'admin',
-      title: 'Admin',
-      desc: 'Sistem genelini ve münazara konu havuzunu yönetir.',
-      icon: <Shield className="role-card-icon" size={24} />
     }
   ];
 
@@ -248,10 +280,18 @@ export const AuthPage: React.FC = () => {
                   className="input-field" 
                   placeholder="Ahmet Yılmaz"
                   value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
+                  onChange={(e) => {
+                    setFullName(e.target.value);
+                    validateFullName(e.target.value);
+                  }}
                   disabled={isLoading}
                   required
                 />
+                {nameError && (
+                  <span style={{ color: 'var(--color-danger)', fontSize: '0.75rem', marginTop: '4px', display: 'block' }}>
+                    {nameError}
+                  </span>
+                )}
               </div>
 
               <div className="input-group">
@@ -278,10 +318,18 @@ export const AuthPage: React.FC = () => {
                   className="input-field" 
                   placeholder="ornek@kursumunazara.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    validateEmail(e.target.value);
+                  }}
                   disabled={isLoading}
                   required
                 />
+                {emailError && (
+                  <span style={{ color: 'var(--color-danger)', fontSize: '0.75rem', marginTop: '4px', display: 'block' }}>
+                    {emailError}
+                  </span>
+                )}
               </div>
 
               <div className="input-group">

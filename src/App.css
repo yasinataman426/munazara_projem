@@ -190,14 +190,16 @@
   justify-content: space-between;
   align-items: center;
   padding: 20px;
-  border: 1px solid var(--glass-border);
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-color);
   border-radius: var(--border-radius-sm);
   transition: all var(--transition-normal);
 }
 
 .room-card:hover {
-  border-color: rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.01);
+  border-color: var(--color-primary);
+  background: var(--bg-surface);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15), 0 0 10px var(--color-primary-glow);
 }
 
 .room-info {

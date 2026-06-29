@@ -5,7 +5,6 @@ import { RoomPage } from './RoomPage';
 import { supabase } from '../database/supabaseClient';
 import type { RoomState, Motion, DebateStatus, UserRole } from '../types';
 import { 
-  LogOut, 
   User as UserIcon, 
   Calendar, 
   Shield, 
@@ -19,8 +18,57 @@ import {
   ChevronRight
 } from 'lucide-react';
 
-export const LobbyPage: React.FC = () => {
-  const { user, logout } = useAuth();
+interface LobbyPageProps {
+  selectedRoomId: string | null;
+  setSelectedRoomId: (id: string | null) => void;
+}
+
+const PRESET_AVATARS = [
+  { id: 'preset1', gradient: 'linear-gradient(135deg, #3b82f6, #1d4ed8)' },
+  { id: 'preset2', gradient: 'linear-gradient(135deg, #10b981, #047857)' },
+  { id: 'preset3', gradient: 'linear-gradient(135deg, #f59e0b, #b45309)' },
+  { id: 'preset4', gradient: 'linear-gradient(135deg, #8b5cf6, #6d28d9)' },
+  { id: 'preset5', gradient: 'linear-gradient(135deg, #ef4444, #b91c1c)' },
+  { id: 'preset6', gradient: 'linear-gradient(135deg, #ec4899, #be185d)' }
+];
+
+export const LobbyPage: React.FC<LobbyPageProps> = ({ selectedRoomId, setSelectedRoomId }) => {
+  const { user } = useAuth();
+
+  const renderActiveAvatar = () => {
+    if (!user) return null;
+    const avatar = user.avatarUrl || '';
+    if (avatar.startsWith('http')) {
+      return (
+        <img 
+          src={avatar} 
+          alt="Avatar" 
+          style={{ width: '60px', height: '60px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--color-primary)', boxShadow: 'var(--shadow-glow)' }} 
+        />
+      );
+    }
+    const preset = PRESET_AVATARS.find(p => p.id === avatar);
+    const gradient = preset ? preset.gradient : 'linear-gradient(135deg, var(--color-primary), var(--color-secondary))';
+    return (
+      <div style={{
+        width: '60px',
+        height: '60px',
+        borderRadius: '50%',
+        background: gradient,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontWeight: 'bold',
+        fontSize: '1.25rem',
+        color: '#ffffff',
+        textTransform: 'uppercase',
+        border: '2px solid rgba(255, 255, 255, 0.1)',
+        boxShadow: '0 4px 15px rgba(0, 0, 0, 0.3)'
+      }}>
+        {user.fullName.substring(0, 2)}
+      </div>
+    );
+  };
   
   // Tab states: 'rooms' | 'motions'
   const [activeTab, setActiveTab] = useState<'rooms' | 'motions'>('rooms');
@@ -33,11 +81,14 @@ export const LobbyPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+
+  // Pagination limit states
+  const [visibleRoomsCount, setVisibleRoomsCount] = useState(6);
+  const [visibleMotionsCount, setVisibleMotionsCount] = useState(10);
   
   // Modals visibility
   const [showCreateRoomModal, setShowCreateRoomModal] = useState(false);
   const [showAddMotionModal, setShowAddMotionModal] = useState(false);
-  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
 
   // Form states for creating a room
   const [newRoomName, setNewRoomName] = useState('');
@@ -51,6 +102,15 @@ export const LobbyPage: React.FC = () => {
   const [newMotionCategory, setNewMotionCategory] = useState('');
   const [newMotionInfoSlide, setNewMotionInfoSlide] = useState('');
   const [motionError, setMotionError] = useState<string | null>(null);
+
+  // Reset pagination when search or filter changes
+  useEffect(() => {
+    setVisibleRoomsCount(6);
+  }, [searchQuery, statusFilter]);
+
+  useEffect(() => {
+    setVisibleMotionsCount(10);
+  }, [searchQuery, categoryFilter]);
 
   // Load data on init and set up Supabase Realtime subscriptions
   useEffect(() => {
@@ -226,42 +286,20 @@ export const LobbyPage: React.FC = () => {
     }
   };
 
-  // Find currently active room
-  const activeRoom = rooms.find(r => r.roomId === selectedRoomId);
-
-  if (activeRoom) {
+  if (selectedRoomId) {
     return (
       <RoomPage 
-        roomId={activeRoom.roomId} 
-        onLeave={() => handleLeaveRoom(activeRoom.roomId)} 
+        roomId={selectedRoomId} 
+        onLeave={() => handleLeaveRoom(selectedRoomId)} 
       />
     );
   }
 
   return (
     <div className="app-container">
-      {/* Header */}
-      <header className="main-header">
-        <div className="container header-content">
-          <div className="logo-text">
-            <span>KÜRSÜ</span>
-          </div>
-          <div className="header-user-info">
-            <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-              Hoş geldin, <strong>{user.username}</strong>
-            </span>
-            <button className="btn btn-secondary" onClick={logout} style={{ padding: '6px 12px', fontSize: '0.85rem' }}>
-              <LogOut size={16} />
-              Çıkış Yap
-            </button>
-          </div>
-        </div>
-      </header>
-
       {/* Main Content */}
       <main className="container" style={{ flexGrow: 1, padding: '30px 24px' }}>
-          /* Normal Lobby View */
-          <div className="lobby-grid">
+        <div className="lobby-grid">
             
             {/* Left panel: Active Rooms & Motion Archive */}
             <div className="glass-panel lobby-panel" style={{ display: 'flex', flexDirection: 'column' }}>
@@ -372,50 +410,65 @@ export const LobbyPage: React.FC = () => {
                       Eşleşen aktif bir münazara odası bulunamadı.
                     </div>
                   ) : (
-                    filteredRooms.map(room => (
-                      <div key={room.roomId} className="room-card glass-panel-hover">
-                        <div className="room-info" style={{ flexGrow: 1, marginRight: '16px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                            <span className="room-name">{room.roomName}</span>
-                            <span className={`badge ${getStatusBadgeClass(room.status)}`} style={{ fontSize: '0.6rem', padding: '2px 8px' }}>
-                              {getStatusLabel(room.status)}
-                            </span>
-                            <span className={`badge ${room.matchMode === 'physical' ? 'badge-jury' : 'badge-debater'}`} style={{ fontSize: '0.6rem', padding: '2px 8px', textTransform: 'uppercase' }}>
-                              {room.matchMode === 'physical' ? 'Fiziksel' : 'Online'}
-                            </span>
+                    <>
+                      {filteredRooms.slice(0, visibleRoomsCount).map(room => (
+                        <div key={room.roomId} className="room-card glass-panel-hover animate-fade-in-row">
+                          <div className="room-info" style={{ flexGrow: 1, marginRight: '16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                              <span className="room-name">{room.roomName}</span>
+                              <span className={`badge ${getStatusBadgeClass(room.status)}`} style={{ fontSize: '0.6rem', padding: '2px 8px' }}>
+                                {getStatusLabel(room.status)}
+                              </span>
+                              <span className={`badge ${room.matchMode === 'physical' ? 'badge-jury' : 'badge-debater'}`} style={{ fontSize: '0.6rem', padding: '2px 8px', textTransform: 'uppercase' }}>
+                                {room.matchMode === 'physical' ? 'Fiziksel' : 'Online'}
+                              </span>
+                            </div>
+                            <div className="room-meta" style={{ marginTop: '8px' }}>
+                              <span className="motion-tag" style={{ maxWidth: '350px' }}>
+                                {room.motion ? room.motion.text : 'Konu belirlenmedi'}
+                              </span>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <UserIcon size={14} />
+                                {Object.keys(room.participants).length + 1} Kişi
+                              </span>
+                            </div>
                           </div>
-                          <div className="room-meta" style={{ marginTop: '8px' }}>
-                            <span className="motion-tag" style={{ maxWidth: '350px' }}>
-                              {room.motion ? room.motion.text : 'Konu belirlenmedi'}
-                            </span>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                              <UserIcon size={14} />
-                              {Object.keys(room.participants).length + 1} Kişi
-                            </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {user.role === 'admin' && (
+                              <button 
+                                className="btn btn-danger"
+                                onClick={() => handleDeleteRoom(room.roomId)}
+                                style={{ padding: '8px', borderRadius: '4px' }}
+                                title="Odayı Kapat"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            )}
+                            <button 
+                              className="btn btn-primary" 
+                              onClick={() => handleJoinRoom(room.roomId)}
+                              style={{ padding: '8px 16px', fontSize: '0.85rem' }}
+                            >
+                              Odaya Katıl
+                              <ChevronRight size={16} />
+                            </button>
                           </div>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          {user.role === 'admin' && (
-                            <button 
-                              className="btn btn-danger"
-                              onClick={() => handleDeleteRoom(room.roomId)}
-                              style={{ padding: '8px', borderRadius: '4px' }}
-                              title="Odayı Kapat"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          )}
-                          <button 
-                            className="btn btn-primary" 
-                            onClick={() => handleJoinRoom(room.roomId)}
-                            style={{ padding: '8px 16px', fontSize: '0.85rem' }}
+                      ))}
+
+                      {filteredRooms.length > visibleRoomsCount && (
+                        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '16px', paddingBottom: '8px' }}>
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 20px', fontSize: '0.8rem' }}
+                            onClick={() => setVisibleRoomsCount(prev => prev + 5)}
                           >
-                            Odaya Katıl
-                            <ChevronRight size={16} />
+                            Daha Fazla Göster
                           </button>
                         </div>
-                      </div>
-                    ))
+                      )}
+                    </>
                   )}
                 </div>
               ) : (
@@ -426,23 +479,38 @@ export const LobbyPage: React.FC = () => {
                       Eşleşen münazara konusu bulunamadı.
                     </div>
                   ) : (
-                    filteredMotions.map(motion => (
-                      <div key={motion.id} className="room-card" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '12px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span className="badge badge-debater" style={{ fontSize: '0.65rem' }}>{motion.category || 'Genel'}</span>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>ID: {motion.id}</span>
-                        </div>
-                        <p style={{ margin: 0, fontWeight: 500, fontSize: '1.05rem', lineHeight: '1.4' }}>
-                          {motion.text}
-                        </p>
-                        {motion.infoSlide && (
-                          <div style={{ padding: '10px 12px', background: 'rgba(255,255,255,0.02)', borderRadius: '4px', borderLeft: '3px solid var(--color-primary)', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                            <span style={{ fontWeight: 600, display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '2px', color: 'var(--color-primary)' }}>Bilgi Slaytı:</span>
-                            {motion.infoSlide}
+                    <>
+                      {filteredMotions.slice(0, visibleMotionsCount).map(motion => (
+                        <div key={motion.id} className="room-card animate-fade-in-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '12px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span className="badge badge-debater" style={{ fontSize: '0.65rem' }}>{motion.category || 'Genel'}</span>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>ID: {motion.id}</span>
                           </div>
-                        )}
-                      </div>
-                    ))
+                          <p style={{ margin: 0, fontWeight: 500, fontSize: '1.05rem', lineHeight: '1.4' }}>
+                            {motion.text}
+                          </p>
+                          {motion.infoSlide && (
+                            <div style={{ padding: '10px 12px', background: 'rgba(255,255,255,0.02)', borderRadius: '4px', borderLeft: '3px solid var(--color-primary)', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                              <span style={{ fontWeight: 600, display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '2px', color: 'var(--color-primary)' }}>Bilgi Slaytı:</span>
+                              {motion.infoSlide}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+
+                      {filteredMotions.length > visibleMotionsCount && (
+                        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '16px', paddingBottom: '8px' }}>
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 20px', fontSize: '0.8rem' }}
+                            onClick={() => setVisibleMotionsCount(prev => prev + 10)}
+                          >
+                            Daha Fazla Göster
+                          </button>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -457,20 +525,7 @@ export const LobbyPage: React.FC = () => {
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                  <div style={{ 
-                    width: '60px', 
-                    height: '60px', 
-                    borderRadius: '50%', 
-                    background: 'linear-gradient(135deg, var(--color-primary), var(--color-secondary))',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontWeight: 'bold',
-                    fontSize: '1.5rem',
-                    textTransform: 'uppercase'
-                  }}>
-                    {user.fullName.substring(0, 2)}
-                  </div>
+                  {renderActiveAvatar()}
                   <div>
                     <h3 style={{ margin: 0, fontSize: '1.2rem' }}>{user.fullName}</h3>
                     <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>@{user.username} • {user.email}</span>

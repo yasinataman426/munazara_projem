@@ -18,7 +18,9 @@ function mapToUser(dbUser: any): User {
     school: dbUser.school,
     role: dbUser.role as UserRole,
     status: dbUser.status as DebaterStatus,
-    createdAt: dbUser.created_at
+    createdAt: dbUser.created_at,
+    isVerified: localStorage.getItem(`kursu_verified_${dbUser.id}`) === 'true',
+    avatarUrl: localStorage.getItem(`kursu_avatar_${dbUser.id}`) || ''
   };
 }
 
@@ -100,17 +102,24 @@ function mapToDbRoom(room: RoomState): any {
 // --- Database Operations Wrapper ---
 
 export class Database {
-  // Get all registered users
-  static async getUsers(): Promise<User[]> {
-    const { data, error } = await supabase
+  // Get all registered users (with optional range pagination, LIFO order)
+  static async getUsers(from?: number, to?: number): Promise<{ users: User[]; total: number }> {
+    let query = supabase
       .from('users')
-      .select('*');
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false });
+
+    if (from !== undefined && to !== undefined) {
+      query = query.range(from, to);
+    }
+
+    const { data, error, count } = await query;
 
     if (error || !data) {
       console.error('Error fetching users:', error);
-      return [];
+      return { users: [], total: 0 };
     }
-    return data.map(mapToUser);
+    return { users: data.map(mapToUser), total: count || 0 };
   }
 
   // Register a new user
@@ -125,7 +134,7 @@ export class Database {
     school: string, 
     role: UserRole, 
     status: DebaterStatus
-  ): Promise<{ success: boolean; message: string; user?: User }> {
+  ): Promise<{ success: boolean; message: string; code?: string; user?: User }> {
     try {
       // Check if email already exists
       const { data: existingEmail } = await supabase
@@ -135,7 +144,7 @@ export class Database {
         .maybeSingle();
 
       if (existingEmail) {
-        return { success: false, message: 'Bu e-posta adresi zaten kayıtlı.' };
+        return { success: false, code: 'auth/email-already-in-use', message: 'Bu e-posta adresi zaten kullanımda, lütfen giriş yapmayı deneyin.' };
       }
 
       // Check if username already exists
@@ -179,7 +188,7 @@ export class Database {
   }
 
   // Login a user
-  static async login(emailOrUsername: string, password?: string): Promise<{ success: boolean; message: string; user?: User }> {
+  static async login(emailOrUsername: string, password?: string): Promise<{ success: boolean; message: string; code?: string; user?: User }> {
     try {
       const { data: dbUser, error } = await supabase
         .from('users')
@@ -193,13 +202,13 @@ export class Database {
       }
 
       if (!dbUser) {
-        return { success: false, message: 'Kullanıcı bulunamadı. Lütfen kayıt olun.' };
+        return { success: false, code: 'auth/user-not-found', message: 'Bu e-posta adresi ile kayıtlı bir kullanıcı bulunamadı.' };
       }
 
       const user = mapToUser(dbUser);
 
       if (user.password && user.password !== password) {
-        return { success: false, message: 'Hatalı şifre. Lütfen tekrar deneyin.' };
+        return { success: false, code: 'auth/wrong-password', message: 'Girdiğiniz şifre hatalı, lütfen tekrar deneyin.' };
       }
 
       sessionStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
@@ -273,17 +282,99 @@ export class Database {
     }
   }
 
-  // Get all active rooms
+  // Get all active rooms (LIFO order)
   static async getRooms(): Promise<RoomState[]> {
     const { data, error } = await supabase
       .from('rooms')
-      .select('*');
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.warn('Error fetching rooms sorted by created_at, using fallback query:', error.message);
+      // Fallback query if created_at column is missing from database schema
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from('rooms')
+        .select('*');
+
+      if (fallbackError || !fallbackData) {
+        console.error('Fallback error fetching rooms:', fallbackError);
+        return [];
+      }
+      return fallbackData.map(mapToRoomState);
+    }
+    return data ? data.map(mapToRoomState) : [];
+  }
+
+  // Get completed rooms (finished matches) with pagination and LIFO sorting (result->>submittedAt desc)
+  static async getCompletedRooms(from?: number, to?: number): Promise<{ rooms: RoomState[]; total: number }> {
+    let query = supabase
+      .from('rooms')
+      .select('*', { count: 'exact' })
+      .eq('status', 'finished')
+      .order('result->>submittedAt', { ascending: false });
+
+    if (from !== undefined && to !== undefined) {
+      query = query.range(from, to);
+    }
+
+    const { data, error, count } = await query;
+    if (error || !data) {
+      console.error('Error fetching completed rooms:', error);
+      return { rooms: [], total: 0 };
+    }
+    return { rooms: data.map(mapToRoomState), total: count || 0 };
+  }
+
+  // Get all completed rooms for a specific user (unpaginated, for stats calculation)
+  static async getAllUserCompletedRooms(userId: string): Promise<RoomState[]> {
+    const { data, error } = await supabase
+      .from('rooms')
+      .select('*')
+      .eq('status', 'finished')
+      .filter('participants', 'has_key', userId);
 
     if (error || !data) {
-      console.error('Error fetching rooms:', error);
+      console.error('Error fetching all user completed rooms:', error);
       return [];
     }
     return data.map(mapToRoomState);
+  }
+
+  // Get user matches with pagination and LIFO sorting
+  static async getUserMatches(
+    userId: string, 
+    role: 'debater' | 'jury', 
+    from: number, 
+    to: number
+  ): Promise<{ rooms: RoomState[]; total: number }> {
+    const { data, error, count } = await supabase
+      .from('rooms')
+      .select('*', { count: 'exact' })
+      .eq('status', 'finished')
+      .eq(`participants->${userId}->>role`, role)
+      .order('result->>submittedAt', { ascending: false })
+      .range(from, to);
+
+    if (error || !data) {
+      console.error('Error fetching user matches:', error);
+      return { rooms: [], total: 0 };
+    }
+    return { rooms: data.map(mapToRoomState), total: count || 0 };
+  }
+
+  // Get database counts for admin stats (highly optimized head: true counts)
+  static async getAdminStats(): Promise<{ totalUsers: number; totalMatches: number; activeRooms: number }> {
+    const [usersCount, matchesCount, activeRoomsCount] = await Promise.all([
+      supabase.from('users').select('id', { count: 'exact', head: true }),
+      supabase.from('rooms').select('room_id', { count: 'exact', head: true }).eq('status', 'finished'),
+      supabase.from('rooms').select('room_id', { count: 'exact', head: true }).neq('status', 'finished')
+    ]);
+
+    return {
+      totalUsers: usersCount.count || 0,
+      totalMatches: matchesCount.count || 0,
+      activeRooms: activeRoomsCount.count || 0
+    };
   }
 
   // Create a new debate room
@@ -435,5 +526,101 @@ export class Database {
       r.areSpectatorVotesReleased = releaseVotes;
       r.status = 'finished';
     });
+  }
+
+  // Update a user's role and handle status constraints
+  static async updateUserRole(userId: string, newRole: UserRole): Promise<{ success: boolean; message: string; user?: User }> {
+    try {
+      const updateData: any = { role: newRole };
+      if (newRole !== 'debater') {
+        updateData.status = null;
+      } else {
+        updateData.status = 'open'; // default status for debaters
+      }
+
+      const { data: dbUser, error } = await supabase
+        .from('users')
+        .update(updateData)
+        .eq('id', userId)
+        .select()
+        .maybeSingle();
+
+      if (error) {
+        return { success: false, message: 'Kullanıcı rolü güncellenirken hata oluştu: ' + error.message };
+      }
+
+      const user = dbUser ? mapToUser(dbUser) : undefined;
+
+      // If the updated user is the current logged-in user, update session storage
+      const currentUser = this.getCurrentUser();
+      if (currentUser && currentUser.id === userId && user) {
+        sessionStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+      }
+
+      return { success: true, message: 'Kullanıcı rolü başarıyla güncellendi.', user };
+    } catch (err: any) {
+      return { success: false, message: 'Rol güncelleme hatası: ' + err.message };
+    }
+  }
+
+  // Update a user's profile and save custom fields in localStorage
+  static async updateUserProfile(
+    userId: string, 
+    profileData: { 
+      fullName: string; 
+      phoneNumber: string; 
+      city: string; 
+      school: string; 
+      age: number;
+      password?: string;
+      avatarUrl?: string;
+      isVerified?: boolean;
+    }
+  ): Promise<{ success: boolean; message: string; user?: User }> {
+    try {
+      const dbPayload: any = {
+        full_name: profileData.fullName,
+        phone_number: profileData.phoneNumber,
+        city: profileData.city,
+        school: profileData.school,
+        age: profileData.age,
+      };
+
+      if (profileData.password) {
+        dbPayload.password = profileData.password;
+      }
+
+      const { data: dbUser, error } = await supabase
+        .from('users')
+        .update(dbPayload)
+        .eq('id', userId)
+        .select()
+        .maybeSingle();
+
+      if (error) {
+        return { success: false, message: 'Profil güncellenirken veritabanı hatası oluştu: ' + error.message };
+      }
+
+      // Handle custom local fields
+      if (profileData.avatarUrl !== undefined) {
+        localStorage.setItem(`kursu_avatar_${userId}`, profileData.avatarUrl);
+      }
+      if (profileData.isVerified !== undefined) {
+        localStorage.setItem(`kursu_verified_${userId}`, String(profileData.isVerified));
+      }
+
+      const user = dbUser ? mapToUser(dbUser) : undefined;
+      if (user) {
+        // Update local session storage if it is the current user
+        const currentUser = this.getCurrentUser();
+        if (currentUser && currentUser.id === userId) {
+          sessionStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+        }
+      }
+
+      return { success: true, message: 'Profil başarıyla güncellendi.', user };
+    } catch (err: any) {
+      return { success: false, message: 'Profil güncelleme hatası: ' + err.message };
+    }
   }
 }
