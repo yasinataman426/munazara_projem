@@ -81,6 +81,12 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
   // Determine user seat/role
   const isJuryOrAdmin = user ? (user.role === 'jury' || user.role === 'admin') : false;
 
+  // Keep the latest onLeave callback in a ref to avoid reconnecting to Supabase Realtime on every render
+  const onLeaveRef = useRef(onLeave);
+  useEffect(() => {
+    onLeaveRef.current = onLeave;
+  }, [onLeave]);
+
   // Load and subscribe to room data using Supabase Realtime
   useEffect(() => {
     const fetchInitialRoom = async () => {
@@ -99,7 +105,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
         if (dbRoom) {
           setRoom(mapToRoomState(dbRoom));
         } else {
-          onLeave();
+          onLeaveRef.current();
         }
       } catch (err) {
         console.error('Error fetching initial room:', err);
@@ -109,7 +115,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
     fetchInitialRoom();
 
     const roomChannel = supabase
-      .channel('room-update')
+      .channel(`room-update-${roomId}`)
       .on(
         'postgres_changes',
         {
@@ -120,7 +126,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
         },
         (payload) => {
           if (payload.eventType === 'DELETE') {
-            onLeave();
+            onLeaveRef.current();
           } else if (payload.new) {
             setRoom(mapToRoomState(payload.new));
           }
@@ -133,7 +139,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
       if (prepIntervalRef.current) clearInterval(prepIntervalRef.current);
     };
-  }, [roomId, onLeave]);
+  }, [roomId]);
 
   // Auto open motion details when released
   useEffect(() => {
