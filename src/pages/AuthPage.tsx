@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import type { UserRole, DebaterStatus } from '../types';
 import { 
-  Scale, 
   Mic, 
   Eye,
   EyeOff,
@@ -30,7 +29,7 @@ export const AuthPage: React.FC = () => {
   const [city, setCity] = useState('');
   const [age, setAge] = useState('');
   const [school, setSchool] = useState('');
-  const [selectedRole, setSelectedRole] = useState<UserRole>('debater');
+  const selectedRole: UserRole = 'debater';
   const [debaterStatus, setDebaterStatus] = useState<DebaterStatus>('rookie');
   
   // Loading & Error states
@@ -145,20 +144,6 @@ export const AuthPage: React.FC = () => {
     }
   };
 
-  const rolesList: { role: UserRole; title: string; desc: string; icon: React.ReactNode }[] = [
-    {
-      role: 'debater',
-      title: 'Münazır',
-      desc: 'Maç odasına katılıp konuşma yapar ve soru isteyebilir.',
-      icon: <Mic className="role-card-icon" size={24} />
-    },
-    {
-      role: 'jury',
-      title: 'Jüri',
-      desc: 'Maç odasını yönetir, süreyi kontrol eder ve sonuçları girer.',
-      icon: <Scale className="role-card-icon" size={24} />
-    }
-  ];
 
   return (
     <div className="auth-container">
@@ -418,22 +403,6 @@ export const AuthPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="input-group">
-              <label className="input-label">PLATFORM ROLÜ</label>
-              <div className="role-selector">
-                {rolesList.map((item) => (
-                  <div 
-                    key={item.role}
-                    className={`role-card ${selectedRole === item.role ? 'selected' : ''}`}
-                    onClick={() => setSelectedRole(item.role)}
-                  >
-                    {item.icon}
-                    <span className="role-card-title">{item.title}</span>
-                    <span className="role-card-desc">{item.desc}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
 
             {/* Debater specific fields */}
             {selectedRole === 'debater' && (

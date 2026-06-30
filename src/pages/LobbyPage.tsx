@@ -232,6 +232,10 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ selectedRoomId, setSelecte
 
   // Filter lists
   const filteredRooms = rooms.filter(room => {
+    // Hide physical matches from debaters and spectators (only admin & jury can see them)
+    if (room.matchMode === 'physical' && user.role !== 'admin' && user.role !== 'jury') {
+      return false;
+    }
     const matchesSearch = room.roomName.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           (room.motion && room.motion.text.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchesStatus = statusFilter === 'all' || room.status === statusFilter;
@@ -328,17 +332,19 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ selectedRoomId, setSelecte
                 </div>
 
                 {activeTab === 'rooms' ? (
-                  <button 
-                    className="btn btn-primary" 
-                    onClick={() => {
-                      setRoomError(null);
-                      setShowCreateRoomModal(true);
-                    }}
-                    style={{ padding: '8px 16px', fontSize: '0.85rem' }}
-                  >
-                    <Plus size={18} />
-                    Oda Oluştur
-                  </button>
+                  (user.role === 'admin' || user.role === 'jury') && (
+                    <button 
+                      className="btn btn-primary" 
+                      onClick={() => {
+                        setRoomError(null);
+                        setShowCreateRoomModal(true);
+                      }}
+                      style={{ padding: '8px 16px', fontSize: '0.85rem' }}
+                    >
+                      <Plus size={18} />
+                      Oda Oluştur
+                    </button>
+                  )
                 ) : (
                   user.role === 'admin' && (
                     <button 
@@ -587,7 +593,7 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ selectedRoomId, setSelecte
       </main>
 
       {/* Modal: Create Debate Room */}
-      {showCreateRoomModal && (
+      {showCreateRoomModal && (user.role === 'admin' || user.role === 'jury') && (
         <div className="modal-overlay">
           <div className="modal-content glass-panel animate-fade-in" style={{ maxWidth: '500px', width: '90%' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
