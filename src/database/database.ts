@@ -378,7 +378,13 @@ export class Database {
   }
 
   // Create a new debate room
-  static async createRoom(roomName: string, motionId: string, customMotionText?: string, matchMode: 'physical' | 'online' = 'online'): Promise<{ success: boolean; message: string; room?: RoomState }> {
+  static async createRoom(
+    roomName: string, 
+    motionId: string, 
+    customMotionText?: string, 
+    matchMode: 'physical' | 'online' = 'online',
+    customMotionInfoSlide?: string
+  ): Promise<{ success: boolean; message: string; room?: RoomState }> {
     try {
       // Check if active room name already exists
       const { data: existing } = await supabase
@@ -397,7 +403,8 @@ export class Database {
         motion = {
           id: 'm_custom_' + Math.random().toString(36).substring(2, 9),
           text: customMotionText,
-          category: 'Özel Konu'
+          category: 'Özel Konu',
+          infoSlide: customMotionInfoSlide
         };
       } else {
         const { data: dbMotion } = await supabase

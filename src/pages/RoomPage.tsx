@@ -640,7 +640,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
                 <Mic size={10} className="text-success animate-pulse" />
               )
             )}
-            {isMe && (
+            {isMe && room.status === 'lobby' && (
               <button 
                 className="btn btn-secondary" 
                 onClick={handleStandUp} 
@@ -660,7 +660,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
             <span className="slim-seat-role" style={{ color: 'var(--text-muted)' }}>{role}</span>
             <span className="slim-seat-name" style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Boş</span>
           </div>
-          {user.role === 'debater' && (
+          {user.role === 'debater' && room.status === 'lobby' && (
             <button 
               className="btn btn-secondary" 
               onClick={() => handleSit(role)} 
@@ -1065,7 +1065,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
             </div>
             <div className="slim-bench-seats" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '8px' }}>
               {renderSeat('PM')}
-              {(room.status === 'lobby' || room.status === 'preparation') && isJuryOrAdmin && (
+              {room.status === 'lobby' && isJuryOrAdmin && (
                 <button
                   type="button"
                   onClick={() => handleSwapRoles('PM', 'DPM')}
@@ -1108,7 +1108,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
             </div>
             <div className="slim-bench-seats" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '8px' }}>
               {renderSeat('LO')}
-              {(room.status === 'lobby' || room.status === 'preparation') && isJuryOrAdmin && (
+              {room.status === 'lobby' && isJuryOrAdmin && (
                 <button
                   type="button"
                   onClick={() => handleSwapRoles('LO', 'DLO')}
@@ -1151,7 +1151,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
             </div>
             <div className="slim-bench-seats" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '8px' }}>
               {renderSeat('MG')}
-              {(room.status === 'lobby' || room.status === 'preparation') && isJuryOrAdmin && (
+              {room.status === 'lobby' && isJuryOrAdmin && (
                 <button
                   type="button"
                   onClick={() => handleSwapRoles('MG', 'GW')}
@@ -1194,7 +1194,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
             </div>
             <div className="slim-bench-seats" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '8px' }}>
               {renderSeat('MO')}
-              {(room.status === 'lobby' || room.status === 'preparation') && isJuryOrAdmin && (
+              {room.status === 'lobby' && isJuryOrAdmin && (
                 <button
                   type="button"
                   onClick={() => handleSwapRoles('MO', 'OW')}

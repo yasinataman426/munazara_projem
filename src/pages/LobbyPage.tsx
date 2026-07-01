@@ -94,6 +94,7 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ selectedRoomId, setSelecte
   const [newRoomName, setNewRoomName] = useState('');
   const [selectedMotionId, setSelectedMotionId] = useState('');
   const [customMotionText, setCustomMotionText] = useState('');
+  const [customMotionInfoSlide, setCustomMotionInfoSlide] = useState('');
   const [matchMode, setMatchMode] = useState<'physical' | 'online'>('online');
   const [roomError, setRoomError] = useState<string | null>(null);
 
@@ -167,12 +168,13 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ selectedRoomId, setSelecte
       return;
     }
 
-    const res = await Database.createRoom(newRoomName, selectedMotionId, customMotionText, matchMode);
+    const res = await Database.createRoom(newRoomName, selectedMotionId, customMotionText, matchMode, customMotionInfoSlide);
     if (res.success) {
       // Clear forms
       setNewRoomName('');
       setSelectedMotionId('');
       setCustomMotionText('');
+      setCustomMotionInfoSlide('');
       setMatchMode('online');
       setRoomError(null);
       setShowCreateRoomModal(false);
@@ -668,17 +670,30 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ selectedRoomId, setSelecte
               </div>
 
               {selectedMotionId === 'custom' && (
-                <div className="input-group" style={{ animation: 'fadeIn 0.3s ease' }}>
-                  <label className="input-label" htmlFor="custom-motion-text">ÖZEL KONU METNİ</label>
-                  <textarea 
-                    id="custom-motion-text"
-                    className="input-field" 
-                    style={{ minHeight: '80px', resize: 'vertical' }}
-                    placeholder="Bu meclis..."
-                    value={customMotionText}
-                    onChange={(e) => setCustomMotionText(e.target.value)}
-                    required
-                  />
+                <div style={{ animation: 'fadeIn 0.3s ease', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <label className="input-label" htmlFor="custom-motion-infoslide">BİLGİ SLAYTI (İsteğe Bağlı)</label>
+                    <textarea 
+                      id="custom-motion-infoslide"
+                      className="input-field" 
+                      style={{ minHeight: '60px', resize: 'vertical' }}
+                      placeholder="Konuyla ilgili ön bilgi veya bağlam..."
+                      value={customMotionInfoSlide}
+                      onChange={(e) => setCustomMotionInfoSlide(e.target.value)}
+                    />
+                  </div>
+                  <div className="input-group" style={{ marginBottom: 0 }}>
+                    <label className="input-label" htmlFor="custom-motion-text">ÖZEL KONU METNİ</label>
+                    <textarea 
+                      id="custom-motion-text"
+                      className="input-field" 
+                      style={{ minHeight: '80px', resize: 'vertical' }}
+                      placeholder="Bu meclis..."
+                      value={customMotionText}
+                      onChange={(e) => setCustomMotionText(e.target.value)}
+                      required
+                    />
+                  </div>
                 </div>
               )}
 
