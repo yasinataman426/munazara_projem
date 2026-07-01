@@ -1,20 +1,6 @@
   -- Supabase Setup Script for Kürsü Debate Platform
 
-  -- 1. Users Table
-  create table if not exists users (
-      id text primary key,
-      username text unique not null,
-      full_name text not null,
-      phone_number text not null,
-      email text unique not null,
-      password text,
-      city text not null,
-      age integer not null,
-      school text not null,
-      role text not null check (role in ('admin', 'jury', 'debater', 'spectator')),
-      status text check (status in ('rookie', 'open', null)),
-      created_at timestamp with time zone default timezone('utc'::text, now()) not null
-  );
+
 
   -- 2. Motions Table
   create table if not exists motions (
@@ -102,21 +88,70 @@
   )
   on conflict (room_id) do nothing;
 
-  -- 4. Insert Default Users
-  insert into users (id, username, full_name, phone_number, email, password, city, age, school, role, status, created_at) values
-  ('p1', 'jury_ali', 'Ali Yılmaz', '0555 111 2233', 'jury_ali@kursumunazara.com', 'password123', 'Ankara', 35, 'Orta Doğu Teknik Üniversitesi', 'jury', null, now()),
-  ('p2', 'deb_berk', 'Berk Can', '0555 222 3344', 'deb_berk@kursumunazara.com', 'password123', 'İzmir', 21, 'Ege Üniversitesi', 'debater', 'open', now()),
-  ('p3', 'jury_ayse', 'Ayşe Demir', '0555 333 4455', 'jury_ayse@kursumunazara.com', 'password123', 'İstanbul', 29, 'Boğaziçi Üniversitesi', 'jury', null, now()),
-  ('p4', 'jury_mehmet', 'Mehmet Öz', '0555 444 5566', 'jury_mehmet@kursumunazara.com', 'password123', 'Bursa', 32, 'Uludağ Üniversitesi', 'jury', null, now())
-  on conflict (id) do nothing;
+
 
 -- 5. Disable RLS (Row Level Security) for frontend demo access
-alter table users disable row level security;
+
 alter table motions disable row level security;
 alter table rooms disable row level security;
 
 -- 6. Add created_at migration for existing database schemas
 ALTER TABLE rooms ADD COLUMN IF NOT EXISTS created_at timestamp with time zone default timezone('utc'::text, now()) not null;
 
+-- 7. Admin RPC Functions
+create or replace function get_users()
+returns table (
+  id uuid,
+  email varchar,
+  username varchar,
+  full_name varchar,
+  phone_number varchar,
+  role varchar,
+  status varchar,
+  city varchar,
+  age integer,
+  school varchar,
+  created_at timestamptz
+) security definer
+as $$
+begin
+  if (auth.jwt() -> 'user_metadata' ->> 'role') != 'admin' then
+    raise exception 'Unauthorized';
+  end if;
+  return query select 
+    au.id, 
+    au.email::varchar, 
+    (au.raw_user_meta_data->>'username')::varchar,
+    (au.raw_user_meta_data->>'fullName')::varchar,
+    (au.raw_user_meta_data->>'phoneNumber')::varchar,
+    (au.raw_user_meta_data->>'role')::varchar,
+    (au.raw_user_meta_data->>'status')::varchar,
+    (au.raw_user_meta_data->>'city')::varchar,
+    cast(au.raw_user_meta_data->>'age' as integer),
+    (au.raw_user_meta_data->>'school')::varchar,
+    au.created_at
+  from auth.users au
+  order by au.created_at desc;
+end;
+$$ language plpgsql;
 
-
+create or replace function set_user_role(target_user_id uuid, new_role text, new_status text)
+returns void
+security definer
+as $$
+begin
+  if (auth.jwt() -> 'user_metadata' ->> 'role') != 'admin' then
+    raise exception 'Unauthorized';
+  end if;
+  
+  if new_status is null then
+    update auth.users
+    set raw_user_meta_data = jsonb_set(raw_user_meta_data, '{role}', to_jsonb(new_role)) - 'status'
+    where id = target_user_id;
+  else
+    update auth.users
+    set raw_user_meta_data = jsonb_set(jsonb_set(raw_user_meta_data, '{role}', to_jsonb(new_role)), '{status}', to_jsonb(new_status))
+    where id = target_user_id;
+  end if;
+end;
+$$ language plpgsql;

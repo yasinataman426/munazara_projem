@@ -1,43 +1,26 @@
 import type { User, UserRole, DebaterStatus, Motion, RoomState, DebateResult } from '../types';
 import { supabase } from './supabaseClient';
 
-const CURRENT_USER_KEY = 'kursu_current_user';
+
 
 // --- Database Schema Mapping Helpers ---
 
-function mapToUser(dbUser: any): User {
+export function mapAuthUserToUser(authUser: any): User {
   return {
-    id: dbUser.id,
-    username: dbUser.username,
-    fullName: dbUser.full_name,
-    phoneNumber: dbUser.phone_number,
-    email: dbUser.email,
-    password: dbUser.password,
-    city: dbUser.city,
-    age: Number(dbUser.age),
-    school: dbUser.school,
-    role: dbUser.role as UserRole,
-    status: dbUser.status as DebaterStatus,
-    createdAt: dbUser.created_at,
-    isVerified: localStorage.getItem(`kursu_verified_${dbUser.id}`) === 'true',
-    avatarUrl: localStorage.getItem(`kursu_avatar_${dbUser.id}`) || ''
-  };
-}
-
-function mapToDbUser(user: User): any {
-  return {
-    id: user.id,
-    username: user.username,
-    full_name: user.fullName,
-    phone_number: user.phoneNumber,
-    email: user.email,
-    password: user.password,
-    city: user.city,
-    age: user.age,
-    school: user.school,
-    role: user.role,
-    status: user.status,
-    created_at: user.createdAt
+    id: authUser.id,
+    username: authUser.user_metadata?.username || '',
+    fullName: authUser.user_metadata?.fullName || '',
+    phoneNumber: authUser.user_metadata?.phoneNumber || '',
+    email: authUser.email || '',
+    password: '', // Hidden for security
+    city: authUser.user_metadata?.city || '',
+    age: Number(authUser.user_metadata?.age || 0),
+    school: authUser.user_metadata?.school || '',
+    role: (authUser.user_metadata?.role as UserRole) || 'debater',
+    status: (authUser.user_metadata?.status as DebaterStatus) || null,
+    createdAt: authUser.created_at,
+    isVerified: localStorage.getItem(`kursu_verified_${authUser.id}`) === 'true',
+    avatarUrl: localStorage.getItem(`kursu_avatar_${authUser.id}`) || ''
   };
 }
 
@@ -102,12 +85,9 @@ function mapToDbRoom(room: RoomState): any {
 // --- Database Operations Wrapper ---
 
 export class Database {
-  // Get all registered users (with optional range pagination, LIFO order)
+  // Get all registered users via RPC (with optional range pagination, LIFO order)
   static async getUsers(from?: number, to?: number): Promise<{ users: User[]; total: number }> {
-    let query = supabase
-      .from('users')
-      .select('*', { count: 'exact' })
-      .order('created_at', { ascending: false });
+    let query = supabase.rpc('get_users', {}, { count: 'exact' }).select('*');
 
     if (from !== undefined && to !== undefined) {
       query = query.range(from, to);
@@ -119,7 +99,23 @@ export class Database {
       console.error('Error fetching users:', error);
       return { users: [], total: 0 };
     }
-    return { users: data.map(mapToUser), total: count || 0 };
+    
+    return { users: data.map((u: any) => ({
+      id: u.id,
+      email: u.email,
+      username: u.username,
+      fullName: u.full_name,
+      phoneNumber: u.phone_number,
+      password: '',
+      city: u.city,
+      age: u.age,
+      school: u.school,
+      role: u.role as UserRole,
+      status: u.status as DebaterStatus,
+      createdAt: u.created_at,
+      isVerified: localStorage.getItem(`kursu_verified_${u.id}`) === 'true',
+      avatarUrl: localStorage.getItem(`kursu_avatar_${u.id}`) || ''
+    })), total: count || 0 };
   }
 
   // Register a new user
@@ -136,102 +132,74 @@ export class Database {
     status: DebaterStatus
   ): Promise<{ success: boolean; message: string; code?: string; user?: User }> {
     try {
-      // Check if email already exists
-      const { data: existingEmail } = await supabase
-        .from('users')
-        .select('id')
-        .eq('email', email)
-        .maybeSingle();
-
-      if (existingEmail) {
-        return { success: false, code: 'auth/email-already-in-use', message: 'Bu e-posta adresi zaten kullanımda, lütfen giriş yapmayı deneyin.' };
-      }
-
-      // Check if username already exists
-      const { data: existingUsername } = await supabase
-        .from('users')
-        .select('id')
-        .eq('username', username)
-        .maybeSingle();
-
-      if (existingUsername) {
-        return { success: false, message: 'Bu kullanıcı adı zaten alınmış.' };
-      }
-
-      const newUser: User = {
-        id: Math.random().toString(36).substring(2, 9),
-        username,
-        fullName,
-        phoneNumber,
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        city,
-        age,
-        school,
-        role,
-        status: role === 'debater' ? status : null,
-        createdAt: new Date().toISOString()
-      };
-
-      const { error } = await supabase
-        .from('users')
-        .insert([mapToDbUser(newUser)]);
+        options: {
+          data: {
+            username,
+            fullName,
+            phoneNumber,
+            city,
+            age,
+            school,
+            role,
+            status: role === 'debater' ? status : null,
+          }
+        }
+      });
 
       if (error) {
-        return { success: false, message: 'Kayıt sırasında bir hata oluştu: ' + error.message };
+        if (error.status === 422 || error.message.includes('already registered')) {
+          return { success: false, code: 'auth/email-already-in-use', message: 'Bu e-posta adresi zaten kullanımda, lütfen giriş yapmayı deneyin.' };
+        }
+        return { success: false, code: error.name, message: 'Kayıt sırasında bir hata oluştu: ' + error.message };
       }
 
-      return { success: true, message: 'Kayıt başarılı.', user: newUser };
+      if (data.user) {
+        return { success: true, message: 'Kayıt başarılı.', user: mapAuthUserToUser(data.user) };
+      }
+      return { success: false, message: 'Bilinmeyen bir hata oluştu.' };
     } catch (err: any) {
       return { success: false, message: 'Kayıt hatası: ' + err.message };
     }
   }
 
   // Login a user
-  static async login(emailOrUsername: string, password?: string): Promise<{ success: boolean; message: string; code?: string; user?: User }> {
+  static async login(email: string, password?: string): Promise<{ success: boolean; message: string; code?: string; user?: User }> {
     try {
-      const { data: dbUser, error } = await supabase
-        .from('users')
-        .select('*')
-        .or(`email.eq.${emailOrUsername},username.eq.${emailOrUsername}`)
-        .maybeSingle();
+      if (!password) {
+        return { success: false, message: 'Şifre gereklidir.' };
+      }
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
 
       if (error) {
-        console.error('Login database error:', error);
+        if (error.message.includes('Invalid login credentials')) {
+          return { success: false, code: 'auth/wrong-password', message: 'Girdiğiniz şifre veya e-posta hatalı, lütfen tekrar deneyin.' };
+        }
         return { success: false, message: 'Veritabanı hatası: ' + error.message };
       }
 
-      if (!dbUser) {
-        return { success: false, code: 'auth/user-not-found', message: 'Bu e-posta adresi ile kayıtlı bir kullanıcı bulunamadı.' };
+      if (data.user) {
+        return { success: true, message: 'Giriş başarılı.', user: mapAuthUserToUser(data.user) };
       }
-
-      const user = mapToUser(dbUser);
-
-      if (user.password && user.password !== password) {
-        return { success: false, code: 'auth/wrong-password', message: 'Girdiğiniz şifre hatalı, lütfen tekrar deneyin.' };
-      }
-
-      sessionStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
-      return { success: true, message: 'Giriş başarılı.', user };
+      return { success: false, message: 'Bilinmeyen bir hata.' };
     } catch (err: any) {
       return { success: false, message: 'Giriş hatası: ' + err.message };
     }
   }
 
-  // Get current logged in user (synchronous from session storage)
+  // Get current logged in user (Handled by AuthContext, this is a placeholder)
   static getCurrentUser(): User | null {
-    const data = sessionStorage.getItem(CURRENT_USER_KEY);
-    if (!data) return null;
-    try {
-      return JSON.parse(data);
-    } catch {
-      return null;
-    }
+    return null;
   }
 
-  // Logout current user (synchronous local session clearing)
-  static logout(): void {
-    sessionStorage.removeItem(CURRENT_USER_KEY);
+  // Logout current user
+  static async logout(): Promise<void> {
+    await supabase.auth.signOut();
   }
 
   // Get all motions
@@ -250,7 +218,6 @@ export class Database {
   // Add a motion to archive
   static async addMotion(text: string, category: string, infoSlide?: string): Promise<{ success: boolean; message: string; motion?: Motion }> {
     try {
-      // Check duplicate
       const { data: existing } = await supabase
         .from('motions')
         .select('id')
@@ -291,7 +258,6 @@ export class Database {
 
     if (error) {
       console.warn('Error fetching rooms sorted by created_at, using fallback query:', error.message);
-      // Fallback query if created_at column is missing from database schema
       const { data: fallbackData, error: fallbackError } = await supabase
         .from('rooms')
         .select('*');
@@ -305,7 +271,7 @@ export class Database {
     return data ? data.map(mapToRoomState) : [];
   }
 
-  // Get completed rooms (finished matches) with pagination and LIFO sorting (result->>submittedAt desc)
+  // Get completed rooms
   static async getCompletedRooms(from?: number, to?: number): Promise<{ rooms: RoomState[]; total: number }> {
     let query = supabase
       .from('rooms')
@@ -325,7 +291,7 @@ export class Database {
     return { rooms: data.map(mapToRoomState), total: count || 0 };
   }
 
-  // Get all completed rooms for a specific user (unpaginated, for stats calculation)
+  // Get all completed rooms for a specific user
   static async getAllUserCompletedRooms(userId: string): Promise<RoomState[]> {
     const { data, error } = await supabase
       .from('rooms')
@@ -362,10 +328,10 @@ export class Database {
     return { rooms: data.map(mapToRoomState), total: count || 0 };
   }
 
-  // Get database counts for admin stats (highly optimized head: true counts)
+  // Get database counts for admin stats
   static async getAdminStats(): Promise<{ totalUsers: number; totalMatches: number; activeRooms: number }> {
     const [usersCount, matchesCount, activeRoomsCount] = await Promise.all([
-      supabase.from('users').select('id', { count: 'exact', head: true }),
+      supabase.rpc('get_users', {}, { count: 'exact', head: true }).select('id'),
       supabase.from('rooms').select('room_id', { count: 'exact', head: true }).eq('status', 'finished'),
       supabase.from('rooms').select('room_id', { count: 'exact', head: true }).neq('status', 'finished')
     ]);
@@ -386,7 +352,6 @@ export class Database {
     customMotionInfoSlide?: string
   ): Promise<{ success: boolean; message: string; room?: RoomState }> {
     try {
-      // Check if active room name already exists
       const { data: existing } = await supabase
         .from('rooms')
         .select('room_id')
@@ -503,7 +468,6 @@ export class Database {
 
       const room = mapToRoomState(dbRoom);
       
-      // Perform user mutation callback
       updateFn(room);
 
       const dbPayload = mapToDbRoom(room);
@@ -535,42 +499,31 @@ export class Database {
     });
   }
 
-  // Update a user's role and handle status constraints
+  // Update a user's role via RPC
   static async updateUserRole(userId: string, newRole: UserRole): Promise<{ success: boolean; message: string; user?: User }> {
     try {
-      const updateData: any = { role: newRole };
-      if (newRole !== 'debater') {
-        updateData.status = null;
-      } else {
-        updateData.status = 'open'; // default status for debaters
+      let newStatus: string | null = null;
+      if (newRole === 'debater') {
+        newStatus = 'open'; // default status for debaters
       }
 
-      const { data: dbUser, error } = await supabase
-        .from('users')
-        .update(updateData)
-        .eq('id', userId)
-        .select()
-        .maybeSingle();
+      const { error } = await supabase.rpc('set_user_role', {
+        target_user_id: userId,
+        new_role: newRole,
+        new_status: newStatus
+      });
 
       if (error) {
         return { success: false, message: 'Kullanıcı rolü güncellenirken hata oluştu: ' + error.message };
       }
 
-      const user = dbUser ? mapToUser(dbUser) : undefined;
-
-      // If the updated user is the current logged-in user, update session storage
-      const currentUser = this.getCurrentUser();
-      if (currentUser && currentUser.id === userId && user) {
-        sessionStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
-      }
-
-      return { success: true, message: 'Kullanıcı rolü başarıyla güncellendi.', user };
+      return { success: true, message: 'Kullanıcı rolü başarıyla güncellendi.' };
     } catch (err: any) {
       return { success: false, message: 'Rol güncelleme hatası: ' + err.message };
     }
   }
 
-  // Update a user's profile and save custom fields in localStorage
+  // Update a user's profile metadata
   static async updateUserProfile(
     userId: string, 
     profileData: { 
@@ -585,30 +538,26 @@ export class Database {
     }
   ): Promise<{ success: boolean; message: string; user?: User }> {
     try {
-      const dbPayload: any = {
-        full_name: profileData.fullName,
-        phone_number: profileData.phoneNumber,
-        city: profileData.city,
-        school: profileData.school,
-        age: profileData.age,
+      const authUpdate: any = { 
+        data: {
+          fullName: profileData.fullName,
+          phoneNumber: profileData.phoneNumber,
+          city: profileData.city,
+          school: profileData.school,
+          age: profileData.age,
+        }
       };
 
       if (profileData.password) {
-        dbPayload.password = profileData.password;
+        authUpdate.password = profileData.password;
       }
 
-      const { data: dbUser, error } = await supabase
-        .from('users')
-        .update(dbPayload)
-        .eq('id', userId)
-        .select()
-        .maybeSingle();
+      const { data, error } = await supabase.auth.updateUser(authUpdate);
 
       if (error) {
         return { success: false, message: 'Profil güncellenirken veritabanı hatası oluştu: ' + error.message };
       }
 
-      // Handle custom local fields
       if (profileData.avatarUrl !== undefined) {
         localStorage.setItem(`kursu_avatar_${userId}`, profileData.avatarUrl);
       }
@@ -616,16 +565,7 @@ export class Database {
         localStorage.setItem(`kursu_verified_${userId}`, String(profileData.isVerified));
       }
 
-      const user = dbUser ? mapToUser(dbUser) : undefined;
-      if (user) {
-        // Update local session storage if it is the current user
-        const currentUser = this.getCurrentUser();
-        if (currentUser && currentUser.id === userId) {
-          sessionStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
-        }
-      }
-
-      return { success: true, message: 'Profil başarıyla güncellendi.', user };
+      return { success: true, message: 'Profil başarıyla güncellendi.', user: data.user ? mapAuthUserToUser(data.user) : undefined };
     } catch (err: any) {
       return { success: false, message: 'Profil güncelleme hatası: ' + err.message };
     }

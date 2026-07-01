@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { User, UserRole, DebaterStatus } from '../types';
-import { Database } from '../database/database';
+import { Database, mapAuthUserToUser } from '../database/database';
+import { supabase } from '../database/supabaseClient';
 
 interface AuthContextType {
   user: User | null;
@@ -18,7 +19,7 @@ interface AuthContextType {
     role: UserRole, 
     status: DebaterStatus
   ) => Promise<{ success: boolean; message: string; code?: string }>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -28,20 +29,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check if user is already logged in
-    const currentUser = Database.getCurrentUser();
-    setUser(currentUser);
-    setLoading(false);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ? mapAuthUserToUser(session.user) : null);
+      setLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ? mapAuthUserToUser(session.user) : null);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const login = async (email: string, password?: string) => {
     setLoading(true);
-    // Simulate minor network latency for premium feel (spinner etc.)
     await new Promise(resolve => setTimeout(resolve, 800));
     const result = await Database.login(email, password);
-    if (result.success && result.user) {
-      setUser(result.user);
-    }
     setLoading(false);
     return { success: result.success, message: result.message, code: result.code };
   };
@@ -72,18 +75,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       role, 
       status
     );
-    if (result.success && result.user) {
-      // Automatically log in on success
-      await Database.login(email, password);
-      setUser(result.user);
-    }
     setLoading(false);
     return { success: result.success, message: result.message, code: result.code };
   };
 
-  const logout = () => {
-    Database.logout();
-    setUser(null);
+  const logout = async () => {
+    await Database.logout();
   };
 
   return (

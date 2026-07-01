@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import type { UserRole, DebaterStatus } from '../types';
 import { 
-  Mic, 
+
   Eye,
   EyeOff,
   Loader2, 
@@ -10,6 +10,29 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { RostrumLogo } from '../components/RostrumLogo';
+import * as yup from 'yup';
+
+const loginSchema = yup.object().shape({
+  email: yup.string().email('Geçersiz e-posta formatı.').required('E-posta adresi gereklidir.'),
+  password: yup.string().required('Şifre gereklidir.')
+});
+
+const registerSchema = yup.object().shape({
+  fullName: yup.string()
+    .test('has-space', 'Lütfen ad ve soyadınızı aralarında boşluk olacak şekilde girin.', (value) => {
+      if (!value) return false;
+      const trimmed = value.trim();
+      return trimmed.includes(' ') && trimmed.split(' ').filter(Boolean).length >= 2;
+    })
+    .required('Ad Soyad gereklidir.'),
+  username: yup.string().required('Kullanıcı adı gereklidir.'),
+  email: yup.string().email('Geçersiz e-posta formatı.').required('E-posta adresi gereklidir.'),
+  phoneNumber: yup.string().required('Telefon numarası gereklidir.'),
+  city: yup.string().required('Şehir gereklidir.'),
+  age: yup.number().typeError('Geçerli bir yaş değeri giriniz.').positive('Yaş pozitif olmalıdır.').required('Yaş gereklidir.'),
+  school: yup.string().required('Okul / Üniversite gereklidir.'),
+  password: yup.string().min(6, 'Şifre en az 6 karakter olmalıdır.').required('Şifre gereklidir.')
+});
 
 export const AuthPage: React.FC = () => {
   const { login, register } = useAuth();
@@ -35,49 +58,26 @@ export const AuthPage: React.FC = () => {
   // Loading & Error states
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Inline validation errors
-  const [emailError, setEmailError] = useState<string | null>(null);
-  const [nameError, setNameError] = useState<string | null>(null);
-
-  const validateEmail = (val: string) => {
-    if (!val) {
-      setEmailError(null);
-      return;
-    }
-    const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!regex.test(val)) {
-      setEmailError('Geçersiz e-posta formatı.');
-    } else {
-      setEmailError(null);
-    }
-  };
-
-  const validateFullName = (val: string) => {
-    if (!val) {
-      setNameError(null);
-      return;
-    }
-    const trimmed = val.trim();
-    if (!trimmed.includes(' ') || trimmed.split(' ').filter(Boolean).length < 2) {
-      setNameError('Lütfen ad ve soyadınızı aralarında boşluk olacak şekilde girin.');
-    } else {
-      setNameError(null);
-    }
-  };
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) {
-      setError('E-posta adresi gereklidir.');
-      return;
-    }
-    if (!loginPassword) {
-      setError('Şifre gereklidir.');
-      return;
+    setValidationErrors({});
+    setError(null);
+
+    try {
+      await loginSchema.validate({ email, password: loginPassword }, { abortEarly: false });
+    } catch (err: any) {
+      if (err instanceof yup.ValidationError) {
+        const errors: Record<string, string> = {};
+        err.inner.forEach(innerErr => {
+          if (innerErr.path) errors[innerErr.path] = innerErr.message;
+        });
+        setValidationErrors(errors);
+        return;
+      }
     }
 
-    setError(null);
     setIsLoading(true);
     try {
       const res = await login(email, loginPassword);
@@ -99,23 +99,25 @@ export const AuthPage: React.FC = () => {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username || !fullName || !phoneNumber || !email || !registerPassword || !city || !age || !school) {
-      setError('Tüm alanları doldurmanız gerekmektedir.');
-      return;
-    }
-
-    const ageNumber = parseInt(age, 10);
-    if (isNaN(ageNumber) || ageNumber <= 0) {
-      setError('Geçerli bir yaş değeri giriniz.');
-      return;
-    }
-
-    if (nameError || emailError) {
-      setError('Lütfen formdaki hataları düzelterek tekrar deneyin.');
-      return;
-    }
-
+    setValidationErrors({});
     setError(null);
+
+    try {
+      await registerSchema.validate({
+        fullName, username, email, phoneNumber, city, age: age ? Number(age) : undefined, school, password: registerPassword
+      }, { abortEarly: false });
+    } catch (err: any) {
+      if (err instanceof yup.ValidationError) {
+        const errors: Record<string, string> = {};
+        err.inner.forEach(innerErr => {
+          if (innerErr.path) errors[innerErr.path] = innerErr.message;
+        });
+        setValidationErrors(errors);
+        setError('Lütfen formdaki hataları düzelterek tekrar deneyin.');
+        return;
+      }
+    }
+
     setIsLoading(true);
     try {
       const res = await register(
@@ -125,7 +127,7 @@ export const AuthPage: React.FC = () => {
         email,
         registerPassword,
         city,
-        ageNumber,
+        Number(age),
         school,
         selectedRole,
         selectedRole === 'debater' ? debaterStatus : null
@@ -168,6 +170,7 @@ export const AuthPage: React.FC = () => {
             onClick={() => {
               setTab('login');
               setError(null);
+              setValidationErrors({});
             }}
             disabled={isLoading}
           >
@@ -178,6 +181,7 @@ export const AuthPage: React.FC = () => {
             onClick={() => {
               setTab('register');
               setError(null);
+              setValidationErrors({});
             }}
             disabled={isLoading}
           >
@@ -200,14 +204,18 @@ export const AuthPage: React.FC = () => {
               <label className="input-label" htmlFor="login-email">E-POSTA ADRESİ</label>
               <input 
                 id="login-email"
-                type="email" 
-                className="input-field" 
+                type="text" 
+                className={`input-field ${validationErrors.email ? 'error' : ''}`} 
                 placeholder="ornek@kursumunazara.com"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => { setEmail(e.target.value); setValidationErrors(prev => ({...prev, email: ''})) }}
                 disabled={isLoading}
-                required
               />
+              {validationErrors.email && (
+                <span style={{ color: 'var(--color-danger)', fontSize: '0.75rem', marginTop: '4px', display: 'block' }}>
+                  {validationErrors.email}
+                </span>
+              )}
             </div>
             
             <div className="input-group">
@@ -216,12 +224,11 @@ export const AuthPage: React.FC = () => {
                 <input 
                   id="login-password"
                   type={showLoginPassword ? "text" : "password"} 
-                  className="input-field" 
+                  className={`input-field ${validationErrors.password ? 'error' : ''}`} 
                   placeholder="••••••••"
                   value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
+                  onChange={(e) => { setLoginPassword(e.target.value); setValidationErrors(prev => ({...prev, password: ''})) }}
                   disabled={isLoading}
-                  required
                 />
                 <button
                   type="button"
@@ -233,6 +240,11 @@ export const AuthPage: React.FC = () => {
                   {showLoginPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>
               </div>
+              {validationErrors.password && (
+                <span style={{ color: 'var(--color-danger)', fontSize: '0.75rem', marginTop: '4px', display: 'block' }}>
+                  {validationErrors.password}
+                </span>
+              )}
             </div>
             
             <button 
@@ -262,19 +274,15 @@ export const AuthPage: React.FC = () => {
                 <input 
                   id="register-fullname"
                   type="text" 
-                  className="input-field" 
+                  className={`input-field ${validationErrors.fullName ? 'error' : ''}`} 
                   placeholder="Ahmet Yılmaz"
                   value={fullName}
-                  onChange={(e) => {
-                    setFullName(e.target.value);
-                    validateFullName(e.target.value);
-                  }}
+                  onChange={(e) => { setFullName(e.target.value); setValidationErrors(prev => ({...prev, fullName: ''})) }}
                   disabled={isLoading}
-                  required
                 />
-                {nameError && (
+                {validationErrors.fullName && (
                   <span style={{ color: 'var(--color-danger)', fontSize: '0.75rem', marginTop: '4px', display: 'block' }}>
-                    {nameError}
+                    {validationErrors.fullName}
                   </span>
                 )}
               </div>
@@ -284,13 +292,17 @@ export const AuthPage: React.FC = () => {
                 <input 
                   id="register-username"
                   type="text" 
-                  className="input-field" 
+                  className={`input-field ${validationErrors.username ? 'error' : ''}`} 
                   placeholder="munazir_ahmet"
                   value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  onChange={(e) => { setUsername(e.target.value); setValidationErrors(prev => ({...prev, username: ''})) }}
                   disabled={isLoading}
-                  required
                 />
+                {validationErrors.username && (
+                  <span style={{ color: 'var(--color-danger)', fontSize: '0.75rem', marginTop: '4px', display: 'block' }}>
+                    {validationErrors.username}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -299,20 +311,16 @@ export const AuthPage: React.FC = () => {
                 <label className="input-label" htmlFor="register-email">E-POSTA ADRESİ</label>
                 <input 
                   id="register-email"
-                  type="email" 
-                  className="input-field" 
+                  type="text" 
+                  className={`input-field ${validationErrors.email ? 'error' : ''}`} 
                   placeholder="ornek@kursumunazara.com"
                   value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    validateEmail(e.target.value);
-                  }}
+                  onChange={(e) => { setEmail(e.target.value); setValidationErrors(prev => ({...prev, email: ''})) }}
                   disabled={isLoading}
-                  required
                 />
-                {emailError && (
+                {validationErrors.email && (
                   <span style={{ color: 'var(--color-danger)', fontSize: '0.75rem', marginTop: '4px', display: 'block' }}>
-                    {emailError}
+                    {validationErrors.email}
                   </span>
                 )}
               </div>
@@ -322,13 +330,17 @@ export const AuthPage: React.FC = () => {
                 <input 
                   id="register-phone"
                   type="tel" 
-                  className="input-field" 
+                  className={`input-field ${validationErrors.phoneNumber ? 'error' : ''}`} 
                   placeholder="0555 123 4567"
                   value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  onChange={(e) => { setPhoneNumber(e.target.value); setValidationErrors(prev => ({...prev, phoneNumber: ''})) }}
                   disabled={isLoading}
-                  required
                 />
+                {validationErrors.phoneNumber && (
+                  <span style={{ color: 'var(--color-danger)', fontSize: '0.75rem', marginTop: '4px', display: 'block' }}>
+                    {validationErrors.phoneNumber}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -338,27 +350,35 @@ export const AuthPage: React.FC = () => {
                 <input 
                   id="register-city"
                   type="text" 
-                  className="input-field" 
+                  className={`input-field ${validationErrors.city ? 'error' : ''}`} 
                   placeholder="İstanbul"
                   value={city}
-                  onChange={(e) => setCity(e.target.value)}
+                  onChange={(e) => { setCity(e.target.value); setValidationErrors(prev => ({...prev, city: ''})) }}
                   disabled={isLoading}
-                  required
                 />
+                {validationErrors.city && (
+                  <span style={{ color: 'var(--color-danger)', fontSize: '0.75rem', marginTop: '4px', display: 'block' }}>
+                    {validationErrors.city}
+                  </span>
+                )}
               </div>
 
               <div className="input-group">
                 <label className="input-label" htmlFor="register-age">YAŞ</label>
                 <input 
                   id="register-age"
-                  type="number" 
-                  className="input-field" 
+                  type="text" 
+                  className={`input-field ${validationErrors.age ? 'error' : ''}`} 
                   placeholder="20"
                   value={age}
-                  onChange={(e) => setAge(e.target.value)}
+                  onChange={(e) => { setAge(e.target.value); setValidationErrors(prev => ({...prev, age: ''})) }}
                   disabled={isLoading}
-                  required
                 />
+                {validationErrors.age && (
+                  <span style={{ color: 'var(--color-danger)', fontSize: '0.75rem', marginTop: '4px', display: 'block' }}>
+                    {validationErrors.age}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -368,13 +388,17 @@ export const AuthPage: React.FC = () => {
                 <input 
                   id="register-school"
                   type="text" 
-                  className="input-field" 
+                  className={`input-field ${validationErrors.school ? 'error' : ''}`} 
                   placeholder="Galatasaray Üniversitesi"
                   value={school}
-                  onChange={(e) => setSchool(e.target.value)}
+                  onChange={(e) => { setSchool(e.target.value); setValidationErrors(prev => ({...prev, school: ''})) }}
                   disabled={isLoading}
-                  required
                 />
+                {validationErrors.school && (
+                  <span style={{ color: 'var(--color-danger)', fontSize: '0.75rem', marginTop: '4px', display: 'block' }}>
+                    {validationErrors.school}
+                  </span>
+                )}
               </div>
 
               <div className="input-group">
@@ -383,12 +407,11 @@ export const AuthPage: React.FC = () => {
                   <input 
                     id="register-password"
                     type={showRegisterPassword ? "text" : "password"} 
-                    className="input-field" 
+                    className={`input-field ${validationErrors.password ? 'error' : ''}`} 
                     placeholder="••••••••"
                     value={registerPassword}
-                    onChange={(e) => setRegisterPassword(e.target.value)}
+                    onChange={(e) => { setRegisterPassword(e.target.value); setValidationErrors(prev => ({...prev, password: ''})) }}
                     disabled={isLoading}
-                    required
                   />
                   <button
                     type="button"
@@ -400,6 +423,11 @@ export const AuthPage: React.FC = () => {
                     {showRegisterPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                   </button>
                 </div>
+                {validationErrors.password && (
+                  <span style={{ color: 'var(--color-danger)', fontSize: '0.75rem', marginTop: '4px', display: 'block' }}>
+                    {validationErrors.password}
+                  </span>
+                )}
               </div>
             </div>
 
