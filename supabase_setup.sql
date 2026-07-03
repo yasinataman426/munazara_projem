@@ -155,3 +155,69 @@ begin
   end if;
 end;
 $$ language plpgsql;
+
+-- 8. Auth Refactoring: Users Table and Triggers
+create table if not exists public.users (
+    id uuid references auth.users(id) on delete cascade primary key,
+    email text unique not null,
+    username text,
+    full_name text,
+    phone_number text,
+    city text,
+    age integer,
+    school text,
+    role text default 'debater',
+    status text,
+    created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Drop any potentially insecure columns if they were created manually
+alter table public.users drop column if exists password;
+alter table public.users drop column if exists pass;
+alter table public.users drop column if exists sifre;
+
+-- Trigger Function to sync auth.users to public.users
+create or replace function public.handle_new_user()
+returns trigger
+security definer
+as $$
+begin
+  insert into public.users (
+    id, 
+    email, 
+    username, 
+    full_name, 
+    phone_number, 
+    city, 
+    age, 
+    school, 
+    role, 
+    status
+  )
+  values (
+    new.id,
+    new.email,
+    new.raw_user_meta_data->>'username',
+    new.raw_user_meta_data->>'fullName',
+    new.raw_user_meta_data->>'phoneNumber',
+    new.raw_user_meta_data->>'city',
+    (new.raw_user_meta_data->>'age')::integer,
+    new.raw_user_meta_data->>'school',
+    coalesce(new.raw_user_meta_data->>'role', 'debater'),
+    new.raw_user_meta_data->>'status'
+  );
+  return new;
+end;
+$$ language plpgsql;
+
+-- Create the Trigger
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();
+
+-- Enable RLS on users
+alter table public.users enable row level security;
+create policy "Users can view their own profile." on public.users for select using (auth.uid() = id);
+create policy "Everyone can view profiles." on public.users for select using (true);
+create policy "Users can update their own profile." on public.users for update using (auth.uid() = id);

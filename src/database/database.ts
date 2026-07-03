@@ -5,20 +5,20 @@ import { supabase } from './supabaseClient';
 
 // --- Database Schema Mapping Helpers ---
 
-export function mapAuthUserToUser(authUser: any): User {
+export function mapAuthUserToUser(authUser: any, dbProfile?: any): User {
   return {
     id: authUser.id,
-    username: authUser.user_metadata?.username || '',
-    fullName: authUser.user_metadata?.fullName || '',
-    phoneNumber: authUser.user_metadata?.phoneNumber || '',
-    email: authUser.email || '',
+    username: dbProfile?.username || authUser.user_metadata?.username || '',
+    fullName: dbProfile?.full_name || authUser.user_metadata?.fullName || '',
+    phoneNumber: dbProfile?.phone_number || authUser.user_metadata?.phoneNumber || '',
+    email: dbProfile?.email || authUser.email || '',
     password: '', // Hidden for security
-    city: authUser.user_metadata?.city || '',
-    age: Number(authUser.user_metadata?.age || 0),
-    school: authUser.user_metadata?.school || '',
-    role: (authUser.user_metadata?.role as UserRole) || 'debater',
-    status: (authUser.user_metadata?.status as DebaterStatus) || null,
-    createdAt: authUser.created_at,
+    city: dbProfile?.city || authUser.user_metadata?.city || '',
+    age: Number(dbProfile?.age || authUser.user_metadata?.age || 0),
+    school: dbProfile?.school || authUser.user_metadata?.school || '',
+    role: (dbProfile?.role as UserRole) || (authUser.user_metadata?.role as UserRole) || 'debater',
+    status: (dbProfile?.status as DebaterStatus) || (authUser.user_metadata?.status as DebaterStatus) || null,
+    createdAt: dbProfile?.created_at || authUser.created_at,
     isVerified: localStorage.getItem(`kursu_verified_${authUser.id}`) === 'true',
     avatarUrl: localStorage.getItem(`kursu_avatar_${authUser.id}`) || ''
   };
@@ -85,9 +85,24 @@ function mapToDbRoom(room: RoomState): any {
 // --- Database Operations Wrapper ---
 
 export class Database {
-  // Get all registered users via RPC (with optional range pagination, LIFO order)
+  // Fetch user profile directly from public.users table
+  static async fetchUserProfile(userId: string): Promise<any | null> {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle();
+      
+    if (error) {
+      console.error('Error fetching user profile from public.users:', error);
+      return null;
+    }
+    return data;
+  }
+
+  // Get all registered users from public.users (with optional range pagination, LIFO order)
   static async getUsers(from?: number, to?: number): Promise<{ users: User[]; total: number }> {
-    let query = supabase.rpc('get_users', {}, { count: 'exact' }).select('*');
+    let query = supabase.from('users').select('*', { count: 'exact' }).order('created_at', { ascending: false });
 
     if (from !== undefined && to !== undefined) {
       query = query.range(from, to);
@@ -157,6 +172,7 @@ export class Database {
       }
 
       if (data.user) {
+        // Trigger inserts data to public.users automatically
         return { success: true, message: 'Kayıt başarılı.', user: mapAuthUserToUser(data.user) };
       }
       return { success: false, message: 'Bilinmeyen bir hata oluştu.' };
@@ -184,7 +200,8 @@ export class Database {
       }
 
       if (data.user) {
-        return { success: true, message: 'Giriş başarılı.', user: mapAuthUserToUser(data.user) };
+        const dbProfile = await Database.fetchUserProfile(data.user.id);
+        return { success: true, message: 'Giriş başarılı.', user: mapAuthUserToUser(data.user, dbProfile) };
       }
       return { success: false, message: 'Bilinmeyen bir hata.' };
     } catch (err: any) {
@@ -557,6 +574,17 @@ export class Database {
       if (error) {
         return { success: false, message: 'Profil güncellenirken veritabanı hatası oluştu: ' + error.message };
       }
+      
+      // Update the public.users table as well to keep it in sync
+      const publicUpdate: any = {
+        full_name: profileData.fullName,
+        phone_number: profileData.phoneNumber,
+        city: profileData.city,
+        school: profileData.school,
+        age: profileData.age
+      };
+      
+      await supabase.from('users').update(publicUpdate).eq('id', userId);
 
       if (profileData.avatarUrl !== undefined) {
         localStorage.setItem(`kursu_avatar_${userId}`, profileData.avatarUrl);
