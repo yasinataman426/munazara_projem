@@ -92,7 +92,7 @@ export class Database {
       .select('*')
       .eq('id', userId)
       .maybeSingle();
-      
+
     if (error) {
       console.error('Error fetching user profile from public.users:', error);
       return null;
@@ -114,36 +114,38 @@ export class Database {
       console.error('Error fetching users:', error);
       return { users: [], total: 0 };
     }
-    
-    return { users: data.map((u: any) => ({
-      id: u.id,
-      email: u.email,
-      username: u.username,
-      fullName: u.full_name,
-      phoneNumber: u.phone_number,
-      password: '',
-      city: u.city,
-      age: u.age,
-      school: u.school,
-      role: u.role as UserRole,
-      status: u.status as DebaterStatus,
-      createdAt: u.created_at,
-      isVerified: localStorage.getItem(`kursu_verified_${u.id}`) === 'true',
-      avatarUrl: localStorage.getItem(`kursu_avatar_${u.id}`) || ''
-    })), total: count || 0 };
+
+    return {
+      users: data.map((u: any) => ({
+        id: u.id,
+        email: u.email,
+        username: u.username,
+        fullName: u.full_name,
+        phoneNumber: u.phone_number,
+        password: '',
+        city: u.city,
+        age: u.age,
+        school: u.school,
+        role: u.role as UserRole,
+        status: u.status as DebaterStatus,
+        createdAt: u.created_at,
+        isVerified: localStorage.getItem(`kursu_verified_${u.id}`) === 'true',
+        avatarUrl: localStorage.getItem(`kursu_avatar_${u.id}`) || ''
+      })), total: count || 0
+    };
   }
 
   // Register a new user
   static async register(
-    username: string, 
-    fullName: string, 
-    phoneNumber: string, 
-    email: string, 
+    username: string,
+    fullName: string,
+    phoneNumber: string,
+    email: string,
     password: string,
-    city: string, 
-    age: number, 
-    school: string, 
-    role: UserRole, 
+    city: string,
+    age: number,
+    school: string,
+    role: UserRole,
     status: DebaterStatus
   ): Promise<{ success: boolean; message: string; code?: string; user?: User }> {
     try {
@@ -325,9 +327,9 @@ export class Database {
 
   // Get user matches with pagination and LIFO sorting
   static async getUserMatches(
-    userId: string, 
-    role: 'debater' | 'jury', 
-    from: number, 
+    userId: string,
+    role: 'debater' | 'jury',
+    from: number,
     to: number
   ): Promise<{ rooms: RoomState[]; total: number }> {
     const { data, error, count } = await supabase
@@ -362,9 +364,9 @@ export class Database {
 
   // Create a new debate room
   static async createRoom(
-    roomName: string, 
-    motionId: string, 
-    customMotionText?: string, 
+    roomName: string,
+    motionId: string,
+    customMotionText?: string,
     matchMode: 'physical' | 'online' = 'online',
     customMotionInfoSlide?: string
   ): Promise<{ success: boolean; message: string; room?: RoomState }> {
@@ -484,7 +486,7 @@ export class Database {
       }
 
       const room = mapToRoomState(dbRoom);
-      
+
       updateFn(room);
 
       const dbPayload = mapToDbRoom(room);
@@ -542,12 +544,12 @@ export class Database {
 
   // Update a user's profile metadata
   static async updateUserProfile(
-    userId: string, 
-    profileData: { 
-      fullName: string; 
-      phoneNumber: string; 
-      city: string; 
-      school: string; 
+    userId: string,
+    profileData: {
+      fullName: string;
+      phoneNumber: string;
+      city: string;
+      school: string;
       age: number;
       password?: string;
       avatarUrl?: string;
@@ -555,7 +557,7 @@ export class Database {
     }
   ): Promise<{ success: boolean; message: string; user?: User }> {
     try {
-      const authUpdate: any = { 
+      const authUpdate: any = {
         data: {
           fullName: profileData.fullName,
           phoneNumber: profileData.phoneNumber,
@@ -574,7 +576,7 @@ export class Database {
       if (error) {
         return { success: false, message: 'Profil güncellenirken veritabanı hatası oluştu: ' + error.message };
       }
-      
+
       // Update the public.users table as well to keep it in sync
       const publicUpdate: any = {
         full_name: profileData.fullName,
@@ -583,7 +585,7 @@ export class Database {
         school: profileData.school,
         age: profileData.age
       };
-      
+
       await supabase.from('users').update(publicUpdate).eq('id', userId);
 
       if (profileData.avatarUrl !== undefined) {

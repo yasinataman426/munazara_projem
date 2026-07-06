@@ -77,6 +77,7 @@ const AppContent: React.FC = () => {
   return (
     <>
       <Navbar currentPage={currentPage} setCurrentPage={setCurrentPage} />
+
       {currentPage === 'lobby' ? (
         <LobbyPage 
           selectedRoomId={selectedRoomId} 

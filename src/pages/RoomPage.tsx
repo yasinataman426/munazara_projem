@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Database, mapToRoomState } from '../database/database';
 import { supabase } from '../database/supabaseClient';
+import { LiveKitRoom, RoomAudioRenderer, useLocalParticipant } from '@livekit/components-react';
+import '@livekit/components-styles';
 import type { RoomState, SpeakerRole } from '../types';
 import { 
   X, 
@@ -40,9 +42,29 @@ const SPEAKER_DETAILS: Record<SpeakerRole, { name: string; team: string; label: 
   OW: { name: 'Muhalefet Kamçısı (OW)', team: 'Muhalefet Kapanış', label: 'MK', side: 'Opp' },
 };
 
+// Sub-component to dynamically publish/unpublish local audio track
+const LocalAudioPublisher = ({ isMicEnabled }: { isMicEnabled: boolean }) => {
+  const { localParticipant } = useLocalParticipant();
+  
+  useEffect(() => {
+    if (localParticipant) {
+      localParticipant.setMicrophoneEnabled(isMicEnabled).catch(err => {
+        console.error("Mikrofon izni alınamadı veya yayın başlatılamadı:", err);
+      });
+    }
+  }, [isMicEnabled, localParticipant]);
+  
+  return null;
+};
+
 export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
   const { user } = useAuth();
   const [room, setRoom] = useState<RoomState | null>(null);
+  
+  const [liveKitToken, setLiveKitToken] = useState<string>('');
+  const livekitUrl = import.meta.env.VITE_LIVEKIT_URL;
+  const [isLocalMicEnabled, setIsLocalMicEnabled] = useState(false);
+
   const [localElapsed, setLocalElapsed] = useState(0);
   const [localPrepRemaining, setLocalPrepRemaining] = useState(900); // 15 mins prep
   const [showPollWidget, setShowPollWidget] = useState(false);
@@ -88,6 +110,25 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
   }, [onLeave]);
 
   // Load and subscribe to room data using Supabase Realtime
+  useEffect(() => {
+    if (!user || !roomId) return;
+    const fetchToken = async () => {
+      try {
+        const livekitUsername = user.username || user.email || user.id || 'Admin';
+        const response = await fetch(`http://localhost:3001/api/token?room=${roomId}&username=${encodeURIComponent(livekitUsername)}`);
+        if (response.ok) {
+          const data = await response.json();
+          setLiveKitToken(data.token);
+        } else {
+          console.error('LiveKit token API returned error status:', response.status);
+        }
+      } catch (error) {
+        console.error('LiveKit token fetch error:', error);
+      }
+    };
+    fetchToken();
+  }, [user?.username, roomId]);
+
   useEffect(() => {
     const fetchInitialRoom = async () => {
       try {
@@ -416,13 +457,33 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
     if (res.success && res.room) setRoom(res.room);
   };
 
-  const handleToggleMute = async () => {
-    const res = await Database.updateRoom(roomId, (r) => {
-      if (r.participants[user.id]) {
-        r.participants[user.id].isMuted = !r.participants[user.id].isMuted;
+  const handleToggleLocalMic = async () => {
+    const newState = !isLocalMicEnabled;
+    
+    // Eğer mikrofon açılıyorsa, doğrudan tıklama anında tarayıcıdan izin iste.
+    // Bu sayede useEffect içindeki LiveKit çağrısı tarayıcı engeline takılmaz.
+    if (newState) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // İzni aldık, akışı kapat ki LiveKit kendi içinden tekrar sorunsuz alabilsin.
+        stream.getTracks().forEach(track => track.stop());
+      } catch (err) {
+        console.error("Kullanıcı mikrofon izni vermedi veya cihaz bulunamadı:", err);
+        return; // İzin verilmezse işlemi iptal et
       }
-    });
-    if (res.success && res.room) setRoom(res.room);
+    }
+
+    setIsLocalMicEnabled(newState);
+    
+    // Yalnızca bir sandalyede oturuyorsa (debater) Supabase üzerindeki görünür isMuted durumunu güncelle
+    if (userSpeakerRole) {
+      const res = await Database.updateRoom(roomId, (r) => {
+        if (r.participants[user.id]) {
+          r.participants[user.id].isMuted = !newState;
+        }
+      });
+      if (res.success && res.room) setRoom(res.room);
+    }
   };
 
   // States
@@ -699,6 +760,21 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
 
   return (
     <div className="room-container animate-fade-in">
+      {liveKitToken && livekitUrl && (
+        <div style={{ display: 'none' }}>
+          <LiveKitRoom
+            video={false}
+            audio={false}
+            token={liveKitToken}
+            serverUrl={livekitUrl}
+            connect={true}
+          >
+            <RoomAudioRenderer />
+            <LocalAudioPublisher isMicEnabled={isLocalMicEnabled} />
+          </LiveKitRoom>
+        </div>
+      )}
+
       {/* 1. Compact Header Banner */}
       <div className="room-header-compact">
         <div className="room-title-section">
@@ -743,13 +819,27 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
           </div>
         )}
 
-        <button 
-          className="btn btn-secondary" 
-          style={{ padding: '4px 8px', fontSize: '0.75rem', border: 'none', background: 'rgba(239, 68, 68, 0.15)', color: 'var(--color-danger)' }}
-          onClick={onLeave}
-        >
-          Odadan Ayrıl
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
+          {liveKitToken && room.matchMode !== 'physical' && isJuryOrAdmin && (
+            <button 
+              className={`btn ${isLocalMicEnabled ? 'btn-danger' : 'btn-success'}`}
+              onClick={handleToggleLocalMic}
+              style={{ padding: '4px 12px', fontSize: '0.75rem' }}
+              title="Yönetici/Jüri Sesinizi Açar"
+            >
+              {isLocalMicEnabled ? <MicOff size={14} style={{ display: 'inline', marginRight: '4px' }} /> : <Mic size={14} style={{ display: 'inline', marginRight: '4px' }} />}
+              {isLocalMicEnabled ? 'Sesimi Kapat' : 'Sesimi Aç'}
+            </button>
+          )}
+
+          <button 
+            className="btn btn-secondary" 
+            style={{ padding: '4px 8px', fontSize: '0.75rem', border: 'none', background: 'rgba(239, 68, 68, 0.15)', color: 'var(--color-danger)' }}
+            onClick={onLeave}
+          >
+            Odadan Ayrıl
+          </button>
+        </div>
       </div>
 
       {/* POI Active Notification Banner */}
@@ -902,15 +992,18 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
 
               {/* Speaker & Jury Controls */}
               <div className="hero-controls-row">
-                {/* Active speaker microphone button */}
-                {room.matchMode !== 'physical' && room.activeSpeaker === userSpeakerRole && (
+                {/* Microphone button for Active Speaker OR Accepted POI Requester */}
+                {liveKitToken && room.matchMode !== 'physical' && (
+                  room.activeSpeaker === userSpeakerRole || 
+                  (room.activePoi?.status === 'accepted' && room.activePoi?.requesterId === user.id)
+                ) && (
                   <button 
-                    className={`btn ${!room.participants[user.id]?.isMuted ? 'btn-danger' : 'btn-success'}`}
-                    onClick={handleToggleMute}
+                    className={`btn ${isLocalMicEnabled ? 'btn-danger' : 'btn-success'}`}
+                    onClick={handleToggleLocalMic}
                     style={{ padding: '6px 12px', fontSize: '0.75rem' }}
                   >
-                    {!room.participants[user.id]?.isMuted ? <MicOff size={12} /> : <Mic size={12} />}
-                    {!room.participants[user.id]?.isMuted ? 'Sesi Kapat' : 'Sesi Aç'}
+                    {isLocalMicEnabled ? <MicOff size={12} /> : <Mic size={12} />}
+                    {isLocalMicEnabled ? 'Sesi Kapat' : 'Sesi Aç'}
                   </button>
                 )}
 

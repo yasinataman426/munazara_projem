@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import type { UserRole, DebaterStatus } from '../types';
-import { 
+import {
 
   Eye,
   EyeOff,
-  Loader2, 
+  Loader2,
   AlertCircle,
   ArrowRight
 } from 'lucide-react';
@@ -36,10 +36,10 @@ const registerSchema = yup.object().shape({
 
 export const AuthPage: React.FC = () => {
   const { login, register } = useAuth();
-  
+
   // Tab states: 'login' | 'register'
   const [tab, setTab] = useState<'login' | 'register'>('login');
-  
+
   // Form input states
   const [username, setUsername] = useState('');
   const [fullName, setFullName] = useState('');
@@ -54,7 +54,7 @@ export const AuthPage: React.FC = () => {
   const [school, setSchool] = useState('');
   const selectedRole: UserRole = 'debater';
   const [debaterStatus, setDebaterStatus] = useState<DebaterStatus>('rookie');
-  
+
   // Loading & Error states
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -150,22 +150,22 @@ export const AuthPage: React.FC = () => {
   return (
     <div className="auth-container">
       <div className="auth-card glass-panel pulse-border">
-        
+
         <div className="auth-header">
           <div className="logo-text" style={{ fontSize: '2.2rem', justifyContent: 'center', marginBottom: '16px', gap: '12px' }}>
             <RostrumLogo size={40} />
             KÜRSÜ
           </div>
           <p className="auth-subtitle">
-            {tab === 'login' 
-              ? 'Hesabınıza giriş yapın ve kürsüye çıkın' 
+            {tab === 'login'
+              ? 'Hesabınıza giriş yapın ve kürsüye çıkın'
               : 'Profilinizi oluşturun ve münazaraya katılın'}
           </p>
         </div>
 
         {/* Tab Selection */}
         <div className="auth-tabs">
-          <button 
+          <button
             className={`auth-tab ${tab === 'login' ? 'active' : ''}`}
             onClick={() => {
               setTab('login');
@@ -176,7 +176,7 @@ export const AuthPage: React.FC = () => {
           >
             Giriş Yap
           </button>
-          <button 
+          <button
             className={`auth-tab ${tab === 'register' ? 'active' : ''}`}
             onClick={() => {
               setTab('register');
@@ -202,13 +202,13 @@ export const AuthPage: React.FC = () => {
           <form onSubmit={handleLogin}>
             <div className="input-group">
               <label className="input-label" htmlFor="login-email">E-POSTA ADRESİ</label>
-              <input 
+              <input
                 id="login-email"
-                type="text" 
-                className={`input-field ${validationErrors.email ? 'error' : ''}`} 
+                type="text"
+                className={`input-field ${validationErrors.email ? 'error' : ''}`}
                 placeholder="ornek@kursumunazara.com"
                 value={email}
-                onChange={(e) => { setEmail(e.target.value); setValidationErrors(prev => ({...prev, email: ''})) }}
+                onChange={(e) => { setEmail(e.target.value); setValidationErrors(prev => ({ ...prev, email: '' })) }}
                 disabled={isLoading}
               />
               {validationErrors.email && (
@@ -217,17 +217,17 @@ export const AuthPage: React.FC = () => {
                 </span>
               )}
             </div>
-            
+
             <div className="input-group">
               <label className="input-label" htmlFor="login-password">ŞİFRE</label>
               <div className="password-input-container">
-                <input 
+                <input
                   id="login-password"
-                  type={showLoginPassword ? "text" : "password"} 
-                  className={`input-field ${validationErrors.password ? 'error' : ''}`} 
+                  type={showLoginPassword ? "text" : "password"}
+                  className={`input-field ${validationErrors.password ? 'error' : ''}`}
                   placeholder="••••••••"
                   value={loginPassword}
-                  onChange={(e) => { setLoginPassword(e.target.value); setValidationErrors(prev => ({...prev, password: ''})) }}
+                  onChange={(e) => { setLoginPassword(e.target.value); setValidationErrors(prev => ({ ...prev, password: '' })) }}
                   disabled={isLoading}
                 />
                 <button
@@ -246,10 +246,10 @@ export const AuthPage: React.FC = () => {
                 </span>
               )}
             </div>
-            
-            <button 
-              type="submit" 
-              className="btn btn-primary" 
+
+            <button
+              type="submit"
+              className="btn btn-primary"
               style={{ width: '100%', marginTop: '8px' }}
               disabled={isLoading}
             >
@@ -271,13 +271,13 @@ export const AuthPage: React.FC = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <div className="input-group">
                 <label className="input-label" htmlFor="register-fullname">AD SOYAD</label>
-                <input 
+                <input
                   id="register-fullname"
-                  type="text" 
-                  className={`input-field ${validationErrors.fullName ? 'error' : ''}`} 
+                  type="text"
+                  className={`input-field ${validationErrors.fullName ? 'error' : ''}`}
                   placeholder="Ahmet Yılmaz"
                   value={fullName}
-                  onChange={(e) => { setFullName(e.target.value); setValidationErrors(prev => ({...prev, fullName: ''})) }}
+                  onChange={(e) => { setFullName(e.target.value); setValidationErrors(prev => ({ ...prev, fullName: '' })) }}
                   disabled={isLoading}
                 />
                 {validationErrors.fullName && (
@@ -289,13 +289,13 @@ export const AuthPage: React.FC = () => {
 
               <div className="input-group">
                 <label className="input-label" htmlFor="register-username">KULLANICI ADI (NICKNAME)</label>
-                <input 
+                <input
                   id="register-username"
-                  type="text" 
-                  className={`input-field ${validationErrors.username ? 'error' : ''}`} 
+                  type="text"
+                  className={`input-field ${validationErrors.username ? 'error' : ''}`}
                   placeholder="munazir_ahmet"
                   value={username}
-                  onChange={(e) => { setUsername(e.target.value); setValidationErrors(prev => ({...prev, username: ''})) }}
+                  onChange={(e) => { setUsername(e.target.value); setValidationErrors(prev => ({ ...prev, username: '' })) }}
                   disabled={isLoading}
                 />
                 {validationErrors.username && (
@@ -309,13 +309,13 @@ export const AuthPage: React.FC = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <div className="input-group">
                 <label className="input-label" htmlFor="register-email">E-POSTA ADRESİ</label>
-                <input 
+                <input
                   id="register-email"
-                  type="text" 
-                  className={`input-field ${validationErrors.email ? 'error' : ''}`} 
+                  type="text"
+                  className={`input-field ${validationErrors.email ? 'error' : ''}`}
                   placeholder="ornek@kursumunazara.com"
                   value={email}
-                  onChange={(e) => { setEmail(e.target.value); setValidationErrors(prev => ({...prev, email: ''})) }}
+                  onChange={(e) => { setEmail(e.target.value); setValidationErrors(prev => ({ ...prev, email: '' })) }}
                   disabled={isLoading}
                 />
                 {validationErrors.email && (
@@ -327,13 +327,13 @@ export const AuthPage: React.FC = () => {
 
               <div className="input-group">
                 <label className="input-label" htmlFor="register-phone">TELEFON NUMARASI</label>
-                <input 
+                <input
                   id="register-phone"
-                  type="tel" 
-                  className={`input-field ${validationErrors.phoneNumber ? 'error' : ''}`} 
+                  type="tel"
+                  className={`input-field ${validationErrors.phoneNumber ? 'error' : ''}`}
                   placeholder="0555 123 4567"
                   value={phoneNumber}
-                  onChange={(e) => { setPhoneNumber(e.target.value); setValidationErrors(prev => ({...prev, phoneNumber: ''})) }}
+                  onChange={(e) => { setPhoneNumber(e.target.value); setValidationErrors(prev => ({ ...prev, phoneNumber: '' })) }}
                   disabled={isLoading}
                 />
                 {validationErrors.phoneNumber && (
@@ -347,13 +347,13 @@ export const AuthPage: React.FC = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <div className="input-group">
                 <label className="input-label" htmlFor="register-city">ŞEHİR</label>
-                <input 
+                <input
                   id="register-city"
-                  type="text" 
-                  className={`input-field ${validationErrors.city ? 'error' : ''}`} 
+                  type="text"
+                  className={`input-field ${validationErrors.city ? 'error' : ''}`}
                   placeholder="İstanbul"
                   value={city}
-                  onChange={(e) => { setCity(e.target.value); setValidationErrors(prev => ({...prev, city: ''})) }}
+                  onChange={(e) => { setCity(e.target.value); setValidationErrors(prev => ({ ...prev, city: '' })) }}
                   disabled={isLoading}
                 />
                 {validationErrors.city && (
@@ -365,13 +365,13 @@ export const AuthPage: React.FC = () => {
 
               <div className="input-group">
                 <label className="input-label" htmlFor="register-age">YAŞ</label>
-                <input 
+                <input
                   id="register-age"
-                  type="text" 
-                  className={`input-field ${validationErrors.age ? 'error' : ''}`} 
+                  type="text"
+                  className={`input-field ${validationErrors.age ? 'error' : ''}`}
                   placeholder="20"
                   value={age}
-                  onChange={(e) => { setAge(e.target.value); setValidationErrors(prev => ({...prev, age: ''})) }}
+                  onChange={(e) => { setAge(e.target.value); setValidationErrors(prev => ({ ...prev, age: '' })) }}
                   disabled={isLoading}
                 />
                 {validationErrors.age && (
@@ -385,13 +385,13 @@ export const AuthPage: React.FC = () => {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <div className="input-group">
                 <label className="input-label" htmlFor="register-school">OKUL / ÜNİVERSİTE</label>
-                <input 
+                <input
                   id="register-school"
-                  type="text" 
-                  className={`input-field ${validationErrors.school ? 'error' : ''}`} 
+                  type="text"
+                  className={`input-field ${validationErrors.school ? 'error' : ''}`}
                   placeholder="Galatasaray Üniversitesi"
                   value={school}
-                  onChange={(e) => { setSchool(e.target.value); setValidationErrors(prev => ({...prev, school: ''})) }}
+                  onChange={(e) => { setSchool(e.target.value); setValidationErrors(prev => ({ ...prev, school: '' })) }}
                   disabled={isLoading}
                 />
                 {validationErrors.school && (
@@ -404,13 +404,13 @@ export const AuthPage: React.FC = () => {
               <div className="input-group">
                 <label className="input-label" htmlFor="register-password">ŞİFRE</label>
                 <div className="password-input-container">
-                  <input 
+                  <input
                     id="register-password"
-                    type={showRegisterPassword ? "text" : "password"} 
-                    className={`input-field ${validationErrors.password ? 'error' : ''}`} 
+                    type={showRegisterPassword ? "text" : "password"}
+                    className={`input-field ${validationErrors.password ? 'error' : ''}`}
                     placeholder="••••••••"
                     value={registerPassword}
-                    onChange={(e) => { setRegisterPassword(e.target.value); setValidationErrors(prev => ({...prev, password: ''})) }}
+                    onChange={(e) => { setRegisterPassword(e.target.value); setValidationErrors(prev => ({ ...prev, password: '' })) }}
                     disabled={isLoading}
                   />
                   <button
@@ -437,14 +437,14 @@ export const AuthPage: React.FC = () => {
               <div className="input-group" style={{ animation: 'fadeIn 0.3s ease' }}>
                 <label className="input-label">MÜNAZIR STATÜSÜ</label>
                 <div className="debater-status-selector">
-                  <div 
+                  <div
                     className={`debater-status-option rookie ${debaterStatus === 'rookie' ? 'selected' : ''}`}
                     onClick={() => setDebaterStatus('rookie')}
                   >
                     <span className="badge badge-rookie" style={{ padding: '2px 8px', fontSize: '0.65rem' }}>Çaylak</span>
                     <span>Rookie</span>
                   </div>
-                  <div 
+                  <div
                     className={`debater-status-option open ${debaterStatus === 'open' ? 'selected' : ''}`}
                     onClick={() => setDebaterStatus('open')}
                   >
@@ -455,9 +455,9 @@ export const AuthPage: React.FC = () => {
               </div>
             )}
 
-            <button 
-              type="submit" 
-              className="btn btn-primary" 
+            <button
+              type="submit"
+              className="btn btn-primary"
               style={{ width: '100%', marginTop: '16px' }}
               disabled={isLoading}
             >
