@@ -10,7 +10,6 @@ import {
   Shield, 
   Scale, 
   Mic,
-  MicOff,
   Eye, 
   Plus, 
   Search, 
