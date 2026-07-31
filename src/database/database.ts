@@ -19,8 +19,8 @@ export function mapAuthUserToUser(authUser: any, dbProfile?: any): User {
     role: (dbProfile?.role as UserRole) || (authUser.user_metadata?.role as UserRole) || 'debater',
     status: (dbProfile?.status as DebaterStatus) || (authUser.user_metadata?.status as DebaterStatus) || null,
     createdAt: dbProfile?.created_at || authUser.created_at,
-    isVerified: localStorage.getItem(`kursu_verified_${authUser.id}`) === 'true',
-    avatarUrl: localStorage.getItem(`kursu_avatar_${authUser.id}`) || ''
+    isVerified: dbProfile?.is_verified ?? authUser.user_metadata?.isVerified ?? false,
+    avatarUrl: dbProfile?.avatar_url || authUser.user_metadata?.avatarUrl || ''
   };
 }
 
@@ -129,8 +129,8 @@ export class Database {
         role: u.role as UserRole,
         status: u.status as DebaterStatus,
         createdAt: u.created_at,
-        isVerified: localStorage.getItem(`kursu_verified_${u.id}`) === 'true',
-        avatarUrl: localStorage.getItem(`kursu_avatar_${u.id}`) || ''
+        isVerified: u.is_verified || false,
+        avatarUrl: u.avatar_url || ''
       })), total: count || 0
     };
   }
@@ -571,6 +571,13 @@ export class Database {
         authUpdate.password = profileData.password;
       }
 
+      if (profileData.avatarUrl !== undefined) {
+        authUpdate.data.avatarUrl = profileData.avatarUrl;
+      }
+      if (profileData.isVerified !== undefined) {
+        authUpdate.data.isVerified = profileData.isVerified;
+      }
+
       const { data, error } = await supabase.auth.updateUser(authUpdate);
 
       if (error) {
@@ -586,16 +593,17 @@ export class Database {
         age: profileData.age
       };
 
-      await supabase.from('users').update(publicUpdate).eq('id', userId);
-
       if (profileData.avatarUrl !== undefined) {
-        localStorage.setItem(`kursu_avatar_${userId}`, profileData.avatarUrl);
+        publicUpdate.avatar_url = profileData.avatarUrl;
       }
       if (profileData.isVerified !== undefined) {
-        localStorage.setItem(`kursu_verified_${userId}`, String(profileData.isVerified));
+        publicUpdate.is_verified = profileData.isVerified;
       }
 
-      return { success: true, message: 'Profil başarıyla güncellendi.', user: data.user ? mapAuthUserToUser(data.user) : undefined };
+      await supabase.from('users').update(publicUpdate).eq('id', userId);
+
+      const dbProfile = await Database.fetchUserProfile(userId);
+      return { success: true, message: 'Profil başarıyla güncellendi.', user: data.user ? mapAuthUserToUser(data.user, dbProfile) : undefined };
     } catch (err: any) {
       return { success: false, message: 'Profil güncelleme hatası: ' + err.message };
     }

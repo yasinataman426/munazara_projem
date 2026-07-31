@@ -111,7 +111,9 @@ returns table (
   city varchar,
   age integer,
   school varchar,
-  created_at timestamptz
+  created_at timestamptz,
+  is_verified boolean,
+  avatar_url varchar
 ) security definer
 as $$
 begin
@@ -129,7 +131,9 @@ begin
     (au.raw_user_meta_data->>'city')::varchar,
     cast(au.raw_user_meta_data->>'age' as integer),
     (au.raw_user_meta_data->>'school')::varchar,
-    au.created_at
+    au.created_at,
+    coalesce((au.raw_user_meta_data->>'isVerified')::boolean, false),
+    (au.raw_user_meta_data->>'avatarUrl')::varchar
   from auth.users au
   order by au.created_at desc;
 end;
@@ -156,7 +160,6 @@ begin
 end;
 $$ language plpgsql;
 
--- 8. Auth Refactoring: Users Table and Triggers
 create table if not exists public.users (
     id uuid references auth.users(id) on delete cascade primary key,
     email text unique not null,
@@ -168,7 +171,9 @@ create table if not exists public.users (
     school text,
     role text default 'debater',
     status text,
-    created_at timestamp with time zone default timezone('utc'::text, now()) not null
+    created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+    is_verified boolean default false,
+    avatar_url text
 );
 
 -- Drop any potentially insecure columns if they were created manually
@@ -192,7 +197,9 @@ begin
     age, 
     school, 
     role, 
-    status
+    status,
+    is_verified,
+    avatar_url
   )
   values (
     new.id,
@@ -204,7 +211,9 @@ begin
     (new.raw_user_meta_data->>'age')::integer,
     new.raw_user_meta_data->>'school',
     coalesce(new.raw_user_meta_data->>'role', 'debater'),
-    new.raw_user_meta_data->>'status'
+    new.raw_user_meta_data->>'status',
+    coalesce((new.raw_user_meta_data->>'isVerified')::boolean, false),
+    new.raw_user_meta_data->>'avatarUrl'
   );
   return new;
 end;
