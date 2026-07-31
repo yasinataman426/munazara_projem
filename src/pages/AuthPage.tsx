@@ -31,7 +31,8 @@ const registerSchema = yup.object().shape({
   city: yup.string().required('Şehir gereklidir.'),
   age: yup.number().typeError('Geçerli bir yaş değeri giriniz.').positive('Yaş pozitif olmalıdır.').required('Yaş gereklidir.'),
   school: yup.string().required('Okul / Üniversite gereklidir.'),
-  password: yup.string().min(6, 'Şifre en az 6 karakter olmalıdır.').required('Şifre gereklidir.')
+  password: yup.string().min(6, 'Şifre en az 6 karakter olmalıdır.').required('Şifre gereklidir.'),
+  passwordConfirm: yup.string().oneOf([yup.ref('password')], 'Şifreler eşleşmiyor.').required('Şifre tekrarı gereklidir.')
 });
 
 export const AuthPage: React.FC = () => {
@@ -47,8 +48,10 @@ export const AuthPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [registerPassword, setRegisterPassword] = useState('');
+  const [registerPasswordConfirm, setRegisterPasswordConfirm] = useState('');
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showRegisterPassword, setShowRegisterPassword] = useState(false);
+  const [showRegisterPasswordConfirm, setShowRegisterPasswordConfirm] = useState(false);
   const [city, setCity] = useState('');
   const [age, setAge] = useState('');
   const [school, setSchool] = useState('');
@@ -82,12 +85,14 @@ export const AuthPage: React.FC = () => {
     try {
       const res = await login(email, loginPassword);
       if (!res.success) {
-        if (res.code === 'auth/user-not-found' || res.message.includes('bulunamadı')) {
+        if (res.code === 'auth/user-not-found' || res.message?.includes('bulunamadı')) {
           setError('Bu e-posta adresi ile kayıtlı bir kullanıcı bulunamadı.');
-        } else if (res.code === 'auth/wrong-password' || res.message.includes('şifre') || res.message.includes('Hatalı')) {
+        } else if (res.code === 'auth/wrong-password' || res.message?.includes('şifre') || res.message?.includes('Hatalı')) {
           setError('Girdiğiniz şifre hatalı, lütfen tekrar deneyin.');
+        } else if (res.code === 'auth/invalid-credential' || res.code === 'auth/invalid-login-credentials' || res.message?.includes('invalid-credential')) {
+          setError('E-posta adresi veya şifre hatalı, lütfen kontrol edip tekrar deneyin.');
         } else {
-          setError(res.message);
+          setError(res.message || 'Giriş yapılamadı.');
         }
       }
     } catch {
@@ -104,7 +109,7 @@ export const AuthPage: React.FC = () => {
 
     try {
       await registerSchema.validate({
-        fullName, username, email, phoneNumber, city, age: age ? Number(age) : undefined, school, password: registerPassword
+        fullName, username, email, phoneNumber, city, age: age ? Number(age) : undefined, school, password: registerPassword, passwordConfirm: registerPasswordConfirm
       }, { abortEarly: false });
     } catch (err: any) {
       if (err instanceof yup.ValidationError) {
@@ -382,25 +387,25 @@ export const AuthPage: React.FC = () => {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <div className="input-group">
-                <label className="input-label" htmlFor="register-school">OKUL / ÜNİVERSİTE</label>
-                <input
-                  id="register-school"
-                  type="text"
-                  className={`input-field ${validationErrors.school ? 'error' : ''}`}
-                  placeholder="Galatasaray Üniversitesi"
-                  value={school}
-                  onChange={(e) => { setSchool(e.target.value); setValidationErrors(prev => ({ ...prev, school: '' })) }}
-                  disabled={isLoading}
-                />
-                {validationErrors.school && (
-                  <span style={{ color: 'var(--color-danger)', fontSize: '0.75rem', marginTop: '4px', display: 'block' }}>
-                    {validationErrors.school}
-                  </span>
-                )}
-              </div>
+            <div className="input-group" style={{ marginBottom: '16px' }}>
+              <label className="input-label" htmlFor="register-school">OKUL / ÜNİVERSİTE</label>
+              <input
+                id="register-school"
+                type="text"
+                className={`input-field ${validationErrors.school ? 'error' : ''}`}
+                placeholder="Galatasaray Üniversitesi"
+                value={school}
+                onChange={(e) => { setSchool(e.target.value); setValidationErrors(prev => ({ ...prev, school: '' })) }}
+                disabled={isLoading}
+              />
+              {validationErrors.school && (
+                <span style={{ color: 'var(--color-danger)', fontSize: '0.75rem', marginTop: '4px', display: 'block' }}>
+                  {validationErrors.school}
+                </span>
+              )}
+            </div>
 
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
               <div className="input-group">
                 <label className="input-label" htmlFor="register-password">ŞİFRE</label>
                 <div className="password-input-container">
@@ -426,6 +431,35 @@ export const AuthPage: React.FC = () => {
                 {validationErrors.password && (
                   <span style={{ color: 'var(--color-danger)', fontSize: '0.75rem', marginTop: '4px', display: 'block' }}>
                     {validationErrors.password}
+                  </span>
+                )}
+              </div>
+
+              <div className="input-group">
+                <label className="input-label" htmlFor="register-password-confirm">ŞİFRE TEKRARI</label>
+                <div className="password-input-container">
+                  <input
+                    id="register-password-confirm"
+                    type={showRegisterPasswordConfirm ? "text" : "password"}
+                    className={`input-field ${validationErrors.passwordConfirm ? 'error' : ''}`}
+                    placeholder="••••••••"
+                    value={registerPasswordConfirm}
+                    onChange={(e) => { setRegisterPasswordConfirm(e.target.value); setValidationErrors(prev => ({ ...prev, passwordConfirm: '' })) }}
+                    disabled={isLoading}
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle-btn"
+                    onClick={() => setShowRegisterPasswordConfirm(!showRegisterPasswordConfirm)}
+                    disabled={isLoading}
+                    tabIndex={-1}
+                  >
+                    {showRegisterPasswordConfirm ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
+                </div>
+                {validationErrors.passwordConfirm && (
+                  <span style={{ color: 'var(--color-danger)', fontSize: '0.75rem', marginTop: '4px', display: 'block' }}>
+                    {validationErrors.passwordConfirm}
                   </span>
                 )}
               </div>

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Database, mapToRoomState } from '../database/database';
 import { supabase } from '../database/supabaseClient';
-import { LiveKitRoom, RoomAudioRenderer, useLocalParticipant } from '@livekit/components-react';
+import { LiveKitRoom, RoomAudioRenderer, useLocalParticipant, useParticipants } from '@livekit/components-react';
 import '@livekit/components-styles';
 import type { RoomState, SpeakerRole } from '../types';
 import { 
@@ -47,14 +47,53 @@ const LocalAudioPublisher = ({ isMicEnabled }: { isMicEnabled: boolean }) => {
   const { localParticipant } = useLocalParticipant();
   
   useEffect(() => {
-    if (localParticipant) {
-      localParticipant.setMicrophoneEnabled(isMicEnabled).catch(err => {
-        console.error("Mikrofon izni alınamadı veya yayın başlatılamadı:", err);
-      });
-    }
+    if (!localParticipant) return;
+    // Her zaman mevcut state'i uygula — hasAttemptedRef gereksiz kısıtlama yapıyordu
+    localParticipant.setMicrophoneEnabled(isMicEnabled).catch(err => {
+      console.error("Mikrofon izni alınamadı veya yayın başlatılamadı:", err);
+    });
   }, [isMicEnabled, localParticipant]);
   
   return null;
+};
+
+// Active Speakers Indicator Component
+const ActiveSpeakersOverlay = () => {
+  const participants = useParticipants();
+  const speakers = participants.filter(p => p.isSpeaking);
+  
+  if (speakers.length === 0) return null;
+  
+  return (
+    <div style={{
+      position: 'fixed',
+      bottom: '24px',
+      left: '24px',
+      background: 'rgba(0,0,0,0.85)',
+      padding: '10px 16px',
+      borderRadius: '12px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '8px',
+      zIndex: 9999,
+      border: '1px solid rgba(16, 185, 129, 0.3)',
+      boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+      animation: 'fadeIn 0.3s ease'
+    }}>
+      <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Şu An Konuşanlar</span>
+      {speakers.map(s => (
+        <div key={s.identity} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="hero-audio-waves" style={{ height: '14px', gap: '3px' }}>
+             <div className="hero-wave-bar" style={{ width: '3px', animationDuration: '0.5s', background: 'var(--color-success)' }} />
+             <div className="hero-wave-bar" style={{ width: '3px', animationDuration: '0.7s', background: 'var(--color-success)' }} />
+             <div className="hero-wave-bar" style={{ width: '3px', animationDuration: '0.6s', background: 'var(--color-success)' }} />
+             <div className="hero-wave-bar" style={{ width: '3px', animationDuration: '0.8s', background: 'var(--color-success)' }} />
+          </div>
+          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>{s.identity}</span>
+        </div>
+      ))}
+    </div>
+  );
 };
 
 export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
@@ -62,7 +101,9 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
   const [room, setRoom] = useState<RoomState | null>(null);
   
   const [liveKitToken, setLiveKitToken] = useState<string>('');
+  const [liveKitError, setLiveKitError] = useState<string>('');
   const livekitUrl = import.meta.env.VITE_LIVEKIT_URL;
+  const tokenApiUrl = import.meta.env.VITE_TOKEN_API_URL || 'http://localhost:3001';
   const [isLocalMicEnabled, setIsLocalMicEnabled] = useState(false);
 
   const [localElapsed, setLocalElapsed] = useState(0);
@@ -114,20 +155,23 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
     if (!user || !roomId) return;
     const fetchToken = async () => {
       try {
+        setLiveKitError('');
         const livekitUsername = user.username || user.email || user.id || 'Admin';
-        const response = await fetch(`http://localhost:3001/api/token?room=${roomId}&username=${encodeURIComponent(livekitUsername)}`);
+        const response = await fetch(`${tokenApiUrl}/api/token?room=${roomId}&username=${encodeURIComponent(livekitUsername)}`);
         if (response.ok) {
           const data = await response.json();
           setLiveKitToken(data.token);
         } else {
           console.error('LiveKit token API returned error status:', response.status);
+          setLiveKitError('Ses sunucusuna bağlanılamadı (token hatası).');
         }
       } catch (error) {
         console.error('LiveKit token fetch error:', error);
+        setLiveKitError('Ses sunucusuna ulaşılamıyor. Lütfen sunucunun çalıştığından emin olun.');
       }
     };
     fetchToken();
-  }, [user?.username, roomId]);
+  }, [user?.id, roomId, tokenApiUrl]);
 
   useEffect(() => {
     const fetchInitialRoom = async () => {
@@ -768,10 +812,37 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
             token={liveKitToken}
             serverUrl={livekitUrl}
             connect={true}
+            onDisconnected={() => {
+              // Bağlantı kopunca mikrofon state'ini sıfırla
+              setIsLocalMicEnabled(false);
+              console.warn('LiveKit bağlantısı kesildi, mikrofon state sıfırlandı.');
+            }}
           >
             <RoomAudioRenderer />
             <LocalAudioPublisher isMicEnabled={isLocalMicEnabled} />
           </LiveKitRoom>
+        </div>
+      )}
+
+  const RoomContent = (
+    <>
+      {/* Ses sunucusu bağlantı hatası banner'ı */}
+      {liveKitError && room.matchMode !== 'physical' && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          padding: '6px 14px',
+          background: 'rgba(239,68,68,0.10)',
+          border: '1px solid rgba(239,68,68,0.30)',
+          borderRadius: '8px',
+          fontSize: '0.78rem',
+          color: 'var(--color-danger)',
+          fontWeight: 500,
+          flexShrink: 0
+        }}>
+          <MicOff size={14} style={{ flexShrink: 0 }} />
+          <span>⚠️ Ses sistemi: {liveKitError}</span>
         </div>
       )}
 
@@ -992,15 +1063,19 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
 
               {/* Speaker & Jury Controls */}
               <div className="hero-controls-row">
-                {/* Microphone button for Active Speaker OR Accepted POI Requester */}
-                {liveKitToken && room.matchMode !== 'physical' && (
-                  room.activeSpeaker === userSpeakerRole || 
-                  (room.activePoi?.status === 'accepted' && room.activePoi?.requesterId === user.id)
-                ) && (
+                {/* Microphone button for Debaters (always visible, disabled if not their turn) */}
+                {liveKitToken && room.matchMode !== 'physical' && !isJuryOrAdmin && (
                   <button 
                     className={`btn ${isLocalMicEnabled ? 'btn-danger' : 'btn-success'}`}
                     onClick={handleToggleLocalMic}
-                    style={{ padding: '6px 12px', fontSize: '0.75rem' }}
+                    style={{ 
+                      padding: '6px 12px', 
+                      fontSize: '0.75rem',
+                      opacity: (room.activeSpeaker === userSpeakerRole || (room.activePoi?.status === 'accepted' && room.activePoi?.requesterId === user.id)) ? 1 : 0.5,
+                      cursor: (room.activeSpeaker === userSpeakerRole || (room.activePoi?.status === 'accepted' && room.activePoi?.requesterId === user.id)) ? 'pointer' : 'not-allowed'
+                    }}
+                    disabled={!(room.activeSpeaker === userSpeakerRole || (room.activePoi?.status === 'accepted' && room.activePoi?.requesterId === user.id))}
+                    title={(room.activeSpeaker === userSpeakerRole || (room.activePoi?.status === 'accepted' && room.activePoi?.requesterId === user.id)) ? (isLocalMicEnabled ? 'Sesi Kapat' : 'Sesi Aç') : 'Sıranız geldiğinde sesinizi açabilirsiniz'}
                   >
                     {isLocalMicEnabled ? <MicOff size={12} /> : <Mic size={12} />}
                     {isLocalMicEnabled ? 'Sesi Kapat' : 'Sesi Aç'}
@@ -1511,14 +1586,6 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
             </div>
           )}
         </>
-      )}      {/* Modal: Kura Çekim Paneli */}
-      {showDrawModal && (
-        <div className="modal-overlay" style={{ zIndex: 100 }}>
-          <div className="modal-content glass-panel animate-fade-in" style={{ maxWidth: '600px', width: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
-              <h2 style={{ margin: 0, fontSize: '1.4rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span>🎲</span> Kura Çekim Paneli
-              </h2>
               <button className="password-toggle-btn" style={{ position: 'static' }} onClick={() => setShowDrawModal(false)}>
                 <X size={20} />
               </button>

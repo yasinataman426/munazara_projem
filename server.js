@@ -28,7 +28,7 @@ app.get('/api/token', async (req, res) => {
   try {
     const at = new AccessToken(apiKey, apiSecret, {
       identity: username,
-      ttl: '10m', // Token expires in 10 minutes
+      ttl: '4h', // Token expires in 4 hours (münazara + hazırlık süresi)
     });
 
     at.addGrant({

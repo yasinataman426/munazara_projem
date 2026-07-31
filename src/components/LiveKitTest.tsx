@@ -12,10 +12,11 @@ export default function LiveKitTest() {
   const [token, setToken] = useState('');
 
   const livekitUrl = import.meta.env.VITE_LIVEKIT_URL;
+  const tokenApiUrl = import.meta.env.VITE_TOKEN_API_URL || 'http://localhost:3001';
 
   const joinRoom = async () => {
     try {
-      const response = await fetch(`http://localhost:3001/api/token?room=${room}&username=${username}`);
+      const response = await fetch(`${tokenApiUrl}/api/token?room=${room}&username=${username}`);
       if (!response.ok) {
         throw new Error('Token alınamadı, API hata döndü.');
       }
