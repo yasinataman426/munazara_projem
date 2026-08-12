@@ -804,6 +804,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
 
   return (
     <div className="room-container animate-fade-in">
+      <ActiveSpeakersOverlay />
       {liveKitToken && livekitUrl && (
         <div style={{ display: 'none' }}>
           <LiveKitRoom
@@ -824,8 +825,6 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
         </div>
       )}
 
-  const RoomContent = (
-    <>
       {/* Ses sunucusu bağlantı hatası banner'ı */}
       {liveKitError && room.matchMode !== 'physical' && (
         <div style={{
@@ -1586,6 +1585,13 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
             </div>
           )}
         </>
+      )}
+      {/* Modal: Yüz Yüze Maç Kura */}
+      {showDrawModal && (
+        <div className="modal-overlay" style={{ zIndex: 110 }}>
+          <div className="modal-content glass-panel animate-fade-in" style={{ maxWidth: '500px', width: '90%', padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+              <h2 style={{ fontSize: '1.2rem', margin: 0, color: 'var(--text-primary)' }}>Münazır Kurası (Yüz Yüze)</h2>
               <button className="password-toggle-btn" style={{ position: 'static' }} onClick={() => setShowDrawModal(false)}>
                 <X size={20} />
               </button>
