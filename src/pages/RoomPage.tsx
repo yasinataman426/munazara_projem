@@ -804,25 +804,25 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
 
   return (
     <div className="room-container animate-fade-in">
-      <ActiveSpeakersOverlay />
       {liveKitToken && livekitUrl && (
-        <div style={{ display: 'none' }}>
-          <LiveKitRoom
-            video={false}
-            audio={false}
-            token={liveKitToken}
-            serverUrl={livekitUrl}
-            connect={true}
-            onDisconnected={() => {
-              // Bağlantı kopunca mikrofon state'ini sıfırla
-              setIsLocalMicEnabled(false);
-              console.warn('LiveKit bağlantısı kesildi, mikrofon state sıfırlandı.');
-            }}
-          >
+        <LiveKitRoom
+          video={false}
+          audio={false}
+          token={liveKitToken}
+          serverUrl={livekitUrl}
+          connect={true}
+          onDisconnected={() => {
+            // Bağlantı kopunca mikrofon state'ini sıfırla
+            setIsLocalMicEnabled(false);
+            console.warn('LiveKit bağlantısı kesildi, mikrofon state sıfırlandı.');
+          }}
+        >
+          <div style={{ display: 'none' }}>
             <RoomAudioRenderer />
             <LocalAudioPublisher isMicEnabled={isLocalMicEnabled} />
-          </LiveKitRoom>
-        </div>
+          </div>
+          <ActiveSpeakersOverlay />
+        </LiveKitRoom>
       )}
 
       {/* Ses sunucusu bağlantı hatası banner'ı */}
