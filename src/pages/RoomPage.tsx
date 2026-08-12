@@ -818,10 +818,8 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
               console.warn('LiveKit bağlantısı kesildi, mikrofon state sıfırlandı.');
             }}
           >
-            <div style={{ display: 'none' }}>
-              <RoomAudioRenderer />
-              <LocalAudioPublisher isMicEnabled={isLocalMicEnabled} />
-            </div>
+            <RoomAudioRenderer />
+            <LocalAudioPublisher isMicEnabled={isLocalMicEnabled} />
             <ActiveSpeakersOverlay />
           </LiveKitRoom>
         </div>
