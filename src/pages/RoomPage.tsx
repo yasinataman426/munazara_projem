@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Database, mapToRoomState } from '../database/database';
 import { supabase } from '../database/supabaseClient';
-import { LiveKitRoom, RoomAudioRenderer, useLocalParticipant, useParticipants } from '@livekit/components-react';
+import { LiveKitRoom, RoomAudioRenderer, useLocalParticipant, useParticipants, StartAudio } from '@livekit/components-react';
 import '@livekit/components-styles';
 import type { RoomState, SpeakerRole } from '../types';
 import { 
@@ -819,6 +819,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
             }}
           >
             <RoomAudioRenderer />
+            <StartAudio label="🎙️ Sesi Duyabilmek İçin Tıklayın" className="btn btn-primary start-audio-mobile-btn" />
             <LocalAudioPublisher isMicEnabled={isLocalMicEnabled} />
             <ActiveSpeakersOverlay />
           </LiveKitRoom>
