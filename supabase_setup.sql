@@ -99,6 +99,8 @@ alter table rooms disable row level security;
 ALTER TABLE rooms ADD COLUMN IF NOT EXISTS created_at timestamp with time zone default timezone('utc'::text, now()) not null;
 
 -- 7. Admin RPC Functions
+drop function if exists get_users();
+
 create or replace function get_users()
 returns table (
   id uuid,
@@ -227,6 +229,9 @@ create trigger on_auth_user_created
 
 -- Enable RLS on users
 alter table public.users enable row level security;
+drop policy if exists "Users can view their own profile." on public.users;
+drop policy if exists "Everyone can view profiles." on public.users;
+drop policy if exists "Users can update their own profile." on public.users;
 create policy "Users can view their own profile." on public.users for select using (auth.uid() = id);
 create policy "Everyone can view profiles." on public.users for select using (true);
 create policy "Users can update their own profile." on public.users for update using (auth.uid() = id);
