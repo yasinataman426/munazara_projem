@@ -826,7 +826,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
       )}
 
       {/* Ses sunucusu bağlantı hatası banner'ı */}
-      {liveKitError && room.matchMode !== 'physical' && (
+      {(liveKitError || !livekitUrl) && room.matchMode !== 'physical' && (
         <div style={{
           display: 'flex',
           alignItems: 'center',
@@ -841,7 +841,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
           flexShrink: 0
         }}>
           <MicOff size={14} style={{ flexShrink: 0 }} />
-          <span>⚠️ Ses sistemi: {liveKitError}</span>
+          <span>⚠️ Ses sistemi: {!livekitUrl ? 'Sunucu adresi (VITE_LIVEKIT_URL) eksik!' : liveKitError}</span>
         </div>
       )}
 
