@@ -160,7 +160,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
     // Push a new history state when entering the room
     window.history.pushState({ inRoom: true, roomId }, '', `#room-${roomId}`);
 
-    const handlePopState = (e: PopStateEvent) => {
+    const handlePopState = () => {
       // The user clicked the back button in the browser
       onLeaveRef.current();
     };
