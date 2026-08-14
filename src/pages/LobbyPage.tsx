@@ -206,7 +206,10 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ selectedRoomId, setSelecte
 
   const handleDeleteRoom = async (roomId: string) => {
     if (window.confirm('Bu odayı silmek istediğinizden emin misiniz?')) {
-      await Database.deleteRoom(roomId);
+      const res = await Database.deleteRoom(roomId);
+      if (!res.success) {
+        alert(res.message);
+      }
       loadData();
       if (selectedRoomId === roomId) {
         setSelectedRoomId(null);
@@ -238,8 +241,11 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ selectedRoomId, setSelecte
     if (room.matchMode === 'physical' && user.role !== 'admin' && user.role !== 'jury') {
       return false;
     }
+    
+    const canSeeMotion = room.isMotionReleased || room.status === 'finished' || user.role === 'admin' || user.role === 'jury';
+    
     const matchesSearch = room.roomName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          (room.motion && room.motion.text.toLowerCase().includes(searchQuery.toLowerCase()));
+                          (canSeeMotion && room.motion && room.motion.text.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchesStatus = statusFilter === 'all' || room.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -433,7 +439,11 @@ export const LobbyPage: React.FC<LobbyPageProps> = ({ selectedRoomId, setSelecte
                             </div>
                             <div className="room-meta" style={{ marginTop: '8px' }}>
                               <span className="motion-tag" style={{ maxWidth: '350px' }}>
-                                {room.motion ? room.motion.text : 'Konu belirlenmedi'}
+                                {room.isMotionReleased || room.status === 'finished'
+                                  ? (room.motion ? room.motion.text : 'Konu belirlenmedi')
+                                  : (user.role === 'admin' || user.role === 'jury'
+                                      ? `[Gizli] ${room.motion?.text || 'Konu belirlenmedi'}`
+                                      : 'Konu henüz açıklanmadı')}
                               </span>
                               <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                 <UserIcon size={14} />

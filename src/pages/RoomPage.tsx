@@ -1,3 +1,4 @@
+import { getSyncedNow } from '../utils/timeSync';
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Database, mapToRoomState } from '../database/database';
@@ -108,6 +109,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
 
   const [localElapsed, setLocalElapsed] = useState(0);
   const [localPrepRemaining, setLocalPrepRemaining] = useState(900); // 15 mins prep
+  const [poiRemaining, setPoiRemaining] = useState<number | null>(null);
   const [showPollWidget, setShowPollWidget] = useState(false);
   const [showParticipantsWidget, setShowParticipantsWidget] = useState(false);
   const [showJuryNotepadWidget, setShowJuryNotepadWidget] = useState(false);
@@ -140,6 +142,9 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
 
   const timerIntervalRef = useRef<any>(null);
   const prepIntervalRef = useRef<any>(null);
+  const autoPausedRef = useRef<boolean>(false);
+  const hasAcceptedPoiRef = useRef<boolean>(false);
+  const poiWarningShownRef = useRef<boolean>(false);
 
   // Determine user seat/role
   const isJuryOrAdmin = user ? (user.role === 'jury' || user.role === 'admin') : false;
@@ -150,13 +155,35 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
     onLeaveRef.current = onLeave;
   }, [onLeave]);
 
+  // Handle browser back button
+  useEffect(() => {
+    // Push a new history state when entering the room
+    window.history.pushState({ inRoom: true, roomId }, '', `#room-${roomId}`);
+
+    const handlePopState = (e: PopStateEvent) => {
+      // The user clicked the back button in the browser
+      onLeaveRef.current();
+    };
+
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      // If we are unmounting but the hash is still there (meaning user clicked UI Leave button instead of Back button),
+      // we should go back to pop the pushed state and clean the history stack.
+      if (window.location.hash === `#room-${roomId}`) {
+        window.history.back();
+      }
+    };
+  }, [roomId]);
+
   // Load and subscribe to room data using Supabase Realtime
   useEffect(() => {
     if (!user || !roomId) return;
     const fetchToken = async () => {
       try {
         setLiveKitError('');
-        const livekitUsername = user.username || user.email || user.id || 'Admin';
+        const livekitUsername = user.fullName || user.username || user.email || user.id || 'Admin';
         const response = await fetch(`${tokenApiUrl}/api/token?room=${roomId}&username=${encodeURIComponent(livekitUsername)}`);
         if (response.ok) {
           const data = await response.json();
@@ -234,18 +261,79 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
     }
   }, [room?.isMotionReleased, hasSeenMotion]);
 
+  // Track POI acceptance and reset per speaker
+  useEffect(() => {
+    hasAcceptedPoiRef.current = false;
+    poiWarningShownRef.current = false;
+  }, [room?.activeSpeaker]);
+
+  useEffect(() => {
+    if (room?.activePoi?.status === 'accepted') {
+      hasAcceptedPoiRef.current = true;
+    }
+  }, [room?.activePoi?.status]);
+
+  // POI Countdown Timer
+  useEffect(() => {
+    if (!room?.activePoi) {
+      setPoiRemaining(null);
+      return;
+    }
+    
+    const updatePoiTimer = () => {
+      const now = getSyncedNow();
+      let startAt = room.activePoi?.status === 'accepted' 
+        ? room.activePoi.acceptedAt 
+        : room.activePoi?.requestedAt;
+
+      if (startAt) {
+        const elapsed = Math.floor((now - startAt) / 1000);
+        const remaining = Math.max(0, 15 - elapsed);
+        setPoiRemaining(remaining);
+      } else {
+        setPoiRemaining(null);
+      }
+    };
+
+    updatePoiTimer();
+    const interval = setInterval(updatePoiTimer, 200);
+    return () => clearInterval(interval);
+  }, [room?.activePoi]);
+
   // Synchronize timers locally
   useEffect(() => {
     if (!room) return;
 
     if (room.status === 'debate' && room.timer.status === 'running' && room.timer.startedAt) {
       const updateSpeechTimer = () => {
-        const elapsed = Math.floor((Date.now() - (room.timer.startedAt || 0)) / 1000);
-        setLocalElapsed(elapsed);
+        const elapsed = Math.floor((getSyncedNow() - (room.timer.startedAt || 0)) / 1000);
+        
+        if (elapsed >= 440) {
+          setLocalElapsed(440);
+          if (isJuryOrAdmin && !autoPausedRef.current) {
+            autoPausedRef.current = true;
+            Database.updateRoom(roomId, (r) => {
+              r.timer.status = 'paused';
+              r.timer.elapsedSeconds = 440;
+              r.timer.startedAt = null;
+            }).catch(err => console.error("Error auto-pausing timer:", err));
+          }
+        } else {
+          setLocalElapsed(elapsed);
+          autoPausedRef.current = false;
+        }
+
+        // POI 6th minute warning for active speaker
+        if (elapsed === 360 && userSpeakerRole && userSpeakerRole === room.activeSpeaker) {
+          if (!hasAcceptedPoiRef.current && room.activePoi && room.activePoi.status === 'pending' && !poiWarningShownRef.current) {
+            poiWarningShownRef.current = true;
+            alert('Şu ana kadar hiç soru (POI) almadınız ve bekleyen bir soru talebi var. Kurallar gereği bir soru almanız gerekiyor!');
+          }
+        }
 
         // Auto expire active POI request if expired
         if (isJuryOrAdmin && room.activePoi && room.activePoi.status === 'pending') {
-          const poiAge = Date.now() - room.activePoi.requestedAt;
+          const poiAge = getSyncedNow() - room.activePoi.requestedAt;
           if (poiAge > 15000) {
             Database.updateRoom(roomId, (r) => {
               r.activePoi = null;
@@ -255,7 +343,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
         
         // Auto expire accepted POI floor after 15 seconds
         if (isJuryOrAdmin && room.activePoi && room.activePoi.status === 'accepted' && room.activePoi.acceptedAt) {
-          const acceptedAge = Date.now() - room.activePoi.acceptedAt;
+          const acceptedAge = getSyncedNow() - room.activePoi.acceptedAt;
           if (acceptedAge > 15000) {
             Database.updateRoom(roomId, (r) => {
               r.activePoi = null;
@@ -276,7 +364,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
 
     if (room.status === 'preparation' && room.prepStartedAt) {
       const updatePrepTimer = () => {
-        const elapsed = Math.floor((Date.now() - (room.prepStartedAt || 0)) / 1000);
+        const elapsed = Math.floor((getSyncedNow() - (room.prepStartedAt || 0)) / 1000);
         const remaining = Math.max(900 - elapsed, 0);
         setLocalPrepRemaining(remaining);
       };
@@ -331,15 +419,23 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
   };
 
   const getTimerStyles = () => {
+    let color, label;
     if (localElapsed < 60) {
-      return { color: 'var(--color-warning)', label: 'Korumalı Süre (POI Alınamaz)', width: `${(localElapsed / 60) * 100}%` };
+      color = 'var(--color-warning)';
+      label = 'Korumalı Süre (POI Alınamaz)';
     } else if (localElapsed <= 360) {
-      return { color: 'var(--color-success)', label: 'Soru Alımı Serbest (POI Open)', width: `${((localElapsed - 60) / 300) * 100}%` };
-    } else if (localElapsed <= 440) {
-      return { color: 'var(--color-warning)', label: 'Korumalı Süre (POI Alınamaz)', width: `${((localElapsed - 360) / 80) * 100}%` };
+      color = 'var(--color-success)';
+      label = 'Soru Alımı Serbest (POI Open)';
+    } else if (localElapsed <= 420) {
+      color = 'var(--color-warning)';
+      label = 'Korumalı Süre (POI Alınamaz)';
     } else {
-      return { color: 'var(--color-danger)', label: 'Süre Aşıldı (Overtime)', width: '100%' };
+      color = 'var(--color-danger)';
+      label = 'Süre Aşıldı (Overtime)';
     }
+    
+    const percentage = Math.min((localElapsed / 440) * 100, 100);
+    return { color, label, width: `${percentage}%` };
   };
 
   const timerConfig = getTimerStyles();
@@ -441,7 +537,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
             status: 'open',
             assignedSpeakerRole: role,
             isMuted: true,
-            joinedAt: Date.now()
+            joinedAt: getSyncedNow()
           };
         }
       });
@@ -485,7 +581,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
           status: user.status,
           assignedSpeakerRole: role,
           isMuted: true,
-          joinedAt: Date.now()
+          joinedAt: getSyncedNow()
         };
       }
     });
@@ -532,9 +628,13 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
 
   // States
   const handleStartPrep = async () => {
+    if (room && !room.isMotionReleased) {
+      alert('Lütfen hazırlık süresini başlatmadan önce konuyu (motion) açıklayınız.');
+      return;
+    }
     const res = await Database.updateRoom(roomId, (r) => {
       r.status = 'preparation';
-      r.prepStartedAt = Date.now();
+      r.prepStartedAt = getSyncedNow();
     });
     if (res.success && res.room) setRoom(res.room);
   };
@@ -586,7 +686,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
         timer: {
           ...room.timer,
           status: 'running',
-          startedAt: Date.now() - (room.timer.elapsedSeconds * 1000)
+          startedAt: getSyncedNow() - (room.timer.elapsedSeconds * 1000)
         }
       });
     }
@@ -594,7 +694,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
     try {
       await Database.updateRoom(roomId, (r) => {
         r.timer.status = 'running';
-        r.timer.startedAt = Date.now() - (r.timer.elapsedSeconds * 1000);
+        r.timer.startedAt = getSyncedNow() - (r.timer.elapsedSeconds * 1000);
       });
     } catch (err) {
       console.error("Error starting timer on database:", err);
@@ -658,7 +758,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
         requesterId: user.id,
         requesterName: user.username,
         requesterTeam: SPEAKER_DETAILS[userSpeakerRole].label,
-        requestedAt: Date.now(),
+        requestedAt: getSyncedNow(),
         acceptedAt: null,
         status: 'pending'
       };
@@ -670,7 +770,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
     const res = await Database.updateRoom(roomId, (r) => {
       if (r.activePoi) {
         r.activePoi.status = 'accepted';
-        r.activePoi.acceptedAt = Date.now();
+        r.activePoi.acceptedAt = getSyncedNow();
       }
     });
     if (res.success && res.room) setRoom(res.room);
@@ -694,7 +794,7 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
           userId: user.id,
           username: user.username,
           team,
-          timestamp: Date.now()
+          timestamp: getSyncedNow()
         });
       }
     });
@@ -931,11 +1031,23 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--color-danger)', display: 'inline-block' }} className="animate-pulse" />
-            <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center' }}>
               {room.activePoi.status === 'pending' ? (
-                <>POI Talebi: <strong>@{room.activePoi.requesterName} ({room.activePoi.requesterTeam})</strong> soru istiyor!</>
+                <>POI Talebi: <strong style={{ margin: '0 4px' }}>@{room.activePoi.requesterName} ({room.activePoi.requesterTeam})</strong> soru istiyor!
+                  {poiRemaining !== null && (
+                    <span style={{ marginLeft: '8px', background: 'rgba(239, 68, 68, 0.2)', color: 'var(--color-danger)', border: '1px solid var(--color-danger)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.75rem' }}>
+                      {poiRemaining}s
+                    </span>
+                  )}
+                </>
               ) : (
-                <>POI Kabul Edildi: <strong>@{room.activePoi.requesterName} ({room.activePoi.requesterTeam})</strong> konuşuyor (15s)</>
+                <>POI Kabul Edildi: <strong style={{ margin: '0 4px' }}>@{room.activePoi.requesterName} ({room.activePoi.requesterTeam})</strong> konuşuyor 
+                  {poiRemaining !== null && (
+                    <span style={{ marginLeft: '8px', background: 'var(--color-danger)', color: 'white', padding: '2px 6px', borderRadius: '4px', fontSize: '0.75rem', boxShadow: '0 0 8px rgba(239, 68, 68, 0.5)' }}>
+                      {poiRemaining}s
+                    </span>
+                  )}
+                </>
               )}
             </span>
           </div>
@@ -1035,14 +1147,20 @@ export const RoomPage: React.FC<RoomPageProps> = ({ roomId, onLeave }) => {
               </span>
 
               {/* Progress Line */}
-              <div className="hero-progress-line-outer">
+              <div className="hero-progress-line-outer" style={{ position: 'relative' }}>
                 <div 
                   className="hero-progress-line-inner" 
                   style={{ 
                     width: timerConfig.width, 
-                    backgroundColor: timerConfig.color 
+                    backgroundColor: timerConfig.color,
+                    transition: 'width 0.2s linear, background-color 0.3s ease'
                   }} 
                 />
+                
+                {/* Visual Markers */}
+                <div style={{ position: 'absolute', left: `${(60/440)*100}%`, top: 0, bottom: 0, width: '2px', backgroundColor: 'rgba(255,255,255,0.4)', zIndex: 5 }} title="1. Dakika" />
+                <div style={{ position: 'absolute', left: `${(360/440)*100}%`, top: 0, bottom: 0, width: '2px', backgroundColor: 'rgba(255,255,255,0.4)', zIndex: 5 }} title="6. Dakika" />
+                <div style={{ position: 'absolute', left: `${(420/440)*100}%`, top: 0, bottom: 0, width: '2px', backgroundColor: 'rgba(255,50,50,0.6)', zIndex: 5 }} title="7. Dakika (Süre Bitişi)" />
               </div>
               
               <span style={{ fontSize: '0.7rem', color: timerConfig.color, marginTop: '4px', fontWeight: 600 }}>

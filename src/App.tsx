@@ -8,6 +8,7 @@ import { Navbar } from './components/Navbar';
 import { Database } from './database/database';
 import { ThemeProvider } from './context/ThemeContext';
 import { Loader2 } from 'lucide-react';
+import { syncServerTime } from './utils/timeSync';
 import './App.css';
 
 const AppContent: React.FC = () => {
@@ -18,10 +19,21 @@ const AppContent: React.FC = () => {
     const currentUser = Database.getCurrentUser();
     return currentUser?.role === 'admin' ? 'admin' : 'lobby';
   });
-  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(() => {
+    const hash = window.location.hash;
+    if (hash && hash.startsWith('#room-')) {
+      const roomId = hash.replace('#room-', '');
+      return roomId || null;
+    }
+    return null;
+  });
   
   // Track login state transition to route users appropriately
   const [prevUserId, setPrevUserId] = useState<string | null>(() => Database.getCurrentUser()?.id || null);
+
+  useEffect(() => {
+    syncServerTime();
+  }, []);
 
   useEffect(() => {
     if (user) {

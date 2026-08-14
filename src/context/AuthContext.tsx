@@ -62,7 +62,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string, password?: string) => {
     setLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 800));
     const result = await Database.login(email, password);
     setLoading(false);
     return { success: result.success, message: result.message, code: result.code };
@@ -81,7 +80,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     status: DebaterStatus
   ) => {
     setLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 800));
     const result = await Database.register(
       username, 
       fullName, 

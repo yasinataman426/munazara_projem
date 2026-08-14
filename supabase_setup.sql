@@ -154,9 +154,17 @@ begin
     update auth.users
     set raw_user_meta_data = jsonb_set(raw_user_meta_data, '{role}', to_jsonb(new_role)) - 'status'
     where id = target_user_id;
+    
+    update public.users
+    set role = new_role, status = null
+    where id = target_user_id;
   else
     update auth.users
     set raw_user_meta_data = jsonb_set(jsonb_set(raw_user_meta_data, '{role}', to_jsonb(new_role)), '{status}', to_jsonb(new_status))
+    where id = target_user_id;
+    
+    update public.users
+    set role = new_role, status = new_status
     where id = target_user_id;
   end if;
 end;
