@@ -433,14 +433,20 @@ export class Database {
   // Delete/close a room
   static async deleteRoom(roomId: string): Promise<{ success: boolean; message: string }> {
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('rooms')
         .delete()
-        .eq('room_id', roomId);
+        .eq('room_id', roomId)
+        .select();
 
       if (error) {
         return { success: false, message: 'Oda kapatılırken hata oluştu: ' + error.message };
       }
+      
+      if (!data || data.length === 0) {
+        return { success: false, message: 'Oda silinemedi. Veritabanı güvenlik kuralları (RLS) silme işlemini engelliyor olabilir.' };
+      }
+
       return { success: true, message: 'Oda başarıyla kapatıldı.' };
     } catch (err: any) {
       return { success: false, message: 'Oda silme hatası: ' + err.message };
